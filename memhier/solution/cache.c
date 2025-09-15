@@ -43,10 +43,8 @@ typedef struct Cache {
   size_t tag_mask;
   
   // 'hardware' storage
-  size_t table_size;
-  size_t store_size;
+  size_t table_num_frames;
   CacheEntry* table;
-  uint8_t* store;
 
 } Cache;
 
@@ -82,8 +80,7 @@ void cache_decode_debug(const Cache* cache, const char* cache_name) {
   printf(format_num, "dirty_pos", cache->dirty_pos);
   printf(format_num, "valid_pos", cache->valid_pos);
   printf(format_num, "table_tag_pos", cache->table_tag_pos);
-  printf(format_num, "table_size", cache->table_size);
-  printf(format_num, "store_size", cache->store_size);
+  printf(format_num, "table_num_frames", cache->table_num_frames);
   printf("\n");
 
   fflush(stdout);
@@ -137,12 +134,10 @@ Cache* cache_new(const size_t num_sets, const size_t set_size, const size_t line
   cache->table_tag_pos = cache->valid_pos + 1;
   
   // allcoate 'hardware' resources
-  cache->table_size = sizeof(CacheEntry) * num_sets * set_size;
-  cache->store_size = num_sets * set_size * line_size;
-  cache->table = malloc(cache->table_size);
-  cache->store = malloc(cache->store_size);
-  if (!cache->table || !cache->store) {
-    fprintf(stderr, "Failed to allocate cache resources.\n");
+  cache->table_num_frames = num_sets * set_size;
+  cache->table = malloc(sizeof(CacheEntry) * cache->table_num_frames);
+  if (!cache->table) {
+    fprintf(stderr, "Failed to allocate entry table.\n");
     goto fail;
   }
 
