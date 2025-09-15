@@ -169,8 +169,15 @@ fail:
   return NULL;
 }
 
+// returns TRUE if tags in the entry and address match, returns FALSE otherwise
+bool cache_tag_match(const Cache* cache, const uint32_t address, const CacheEntry entry) {
+  uint32_t addr_tag = (address >> cache->addr_tag_pos) & cache->tag_mask;
+  uint32_t entry_tag = (entry >> cache->table_tag_pos) & cache->tag_mask;
+  return addr_tag == entry_tag;
+}
+
 // returns TRUE on hit, FALSE on miss, only puts frame number into *frame on hit and frame is non-null.
-bool cache_check_fully(const Cache* cache, uint32_t address, size_t* frame) {
+bool cache_check_fully(const Cache* cache, const uint32_t address, size_t* frame) {
   if (cache->mode != FULLY_ASSOCIATIVE) {
     fprintf(stderr, "WARNING A non-FULLY-ASSOCIATIVE cache has been passed to the FULLY ASSOCIATIVE check.\n");
     return false;
@@ -178,11 +185,11 @@ bool cache_check_fully(const Cache* cache, uint32_t address, size_t* frame) {
 
   for (size_t set = 0; set < cache->table_num_frames; set++) {
     CacheEntry entry = cache->table[set];
-    uint32_t addr_tag = (address >> cache->addr_tag_pos) & cache->tag_mask;
-    uint32_t entry_tag = (entry >> cache->table_tag_pos) & cache->tag_mask;
-    bool valid = (entry >> cache->valid_pos) & 1;
 
-    if (addr_tag == entry_tag && valid) {
+    bool valid = (entry >> cache->valid_pos) & 1;
+    if (!valid) continue;
+
+    if (cache_tag_match(cache, address, entry)) {
       if (frame) *frame = set;
       return true;
     }
@@ -192,7 +199,7 @@ bool cache_check_fully(const Cache* cache, uint32_t address, size_t* frame) {
 }
 
 // returns TRUE on hit, FALSE on miss, will always put frame number in *frame if non-null.
-bool cache_check_direct(const Cache* cache, uint32_t address, size_t* frame) {
+bool cache_check_direct(const Cache* cache, const uint32_t address, size_t* frame) {
   if (cache->mode != DIRECT_MAPPED) {
     fprintf(stderr, "WARNING A non-DIRECT-MAPPED cache has been passed to the DIRECT MAPPED check.\n");
     return false;
@@ -202,17 +209,15 @@ bool cache_check_direct(const Cache* cache, uint32_t address, size_t* frame) {
   if (frame) *frame = set;
 
   CacheEntry entry = cache->table[set];
+
   bool valid = (entry >> cache->valid_pos) & 1;
   if (!valid) return false;
 
-  uint32_t addr_tag = (address << cache->addr_tag_pos) & cache->tag_mask;
-  uint32_t table_tag = (address << cache->table_tag_pos) & cache->tag_mask;
- 
-  return addr_tag == table_tag; 
+  return cache_tag_match(cache, address, entry); 
 }
 
 // returns TRUE on hit, FALSE on miss, only puts frame number into *frame on hit and frame is non-null.
-bool cache_check_set(const Cache* cache, uint32_t address, size_t* frame) {
+bool cache_check_set(const Cache* cache, const uint32_t address, size_t* frame) {
   if (cache->mode != SET_ASSOCIATIVE) {
     fprintf(stderr, "WARNING A non-SET-ASSOCIATIVE cache has been passed to the SET_ASSOCIATIVE check.\n");
     return false;
@@ -220,16 +225,13 @@ bool cache_check_set(const Cache* cache, uint32_t address, size_t* frame) {
   
   size_t set = (address >> cache->index_pos) & cache->index_mask;
   size_t start_frame = set * cache->set_size;
-  for (size_t i = start_frame; i < start_frame + set_size; i++) {
+  for (size_t i = start_frame; i < start_frame + cache->set_size; i++) {
     CacheEntry entry = cache->table[i];
     
-    bool valid = (entry >> cache->valid_pos & 1);
+    bool valid = (entry >> cache->valid_pos) & 1;
     if (!valid) continue;
 
-    uint32_t addr_tag = (address << cache->addr_tag_pos) & cache->tag_mask;
-    uint32_t table_tag = (address << cache->table_tag_pos) & cache->tag_mask;
-    
-    if (addr_tag == table_tag) {
+    if (cache_tag_match(cache, address, entry)) {
       if (frame) *frame = i;
       return true;
     }
@@ -238,13 +240,24 @@ bool cache_check_set(const Cache* cache, uint32_t address, size_t* frame) {
   return false;
 }
 
-bool cache_check(const Cache* cache, uint32_t address) {
+bool cache_check(const Cache* cache, uint32_t address, size_t* frame) {
   switch(cache->mode) {
     case FULLY_ASSOCIATIVE:
-      return cache_check_fully(cache, address);
+      return cache_check_fully(cache, address, frame);
     case DIRECT_MAPPED:
-      return cache_check_direct(cache, address);
+      return cache_check_direct(cache, address, frame);
     case SET_ASSOCIATIVE:
-      return cache_check_set(cache, address);
+      return cache_check_set(cache, address, frame);
   }
+
+  fprintf(stderr, "WARNING cache_check was passed a cache with an invalid mode.\n");
+  return false;
+}
+
+bool cache_invalidate_entry(Cache* cache, const uint32_t address) {
+  size_t frame;
+  if (!cache_check(cache, address, &frame)) return false;
+
+  cache->table[frame] = 0;
+  return true;
 }
