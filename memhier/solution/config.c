@@ -321,6 +321,8 @@ Config* read_config(const char* filename) {
       goto config_fail;
   }
   
+  fclose(f);
+  free(buf);
 
   // CONSTRAINT VALIDATION
   fprintf(stderr, "Checking constraint validations\n"); 

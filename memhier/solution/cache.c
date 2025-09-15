@@ -7,7 +7,7 @@
 #include "config_consts.h"
 #include "util.h"
 
-typedef uint32_t CacheEntry;
+typedef uint64_t CacheEntry;
 typedef int CacheMode;
 
 #define FULLY_ASSOCIATIVE 0
@@ -64,7 +64,10 @@ void cache_decode_debug(const Cache* cache, const char* cache_name) {
   printb(cache->offset_mask);
   printf("\n");
 
-  printf(format_num, "index_pos", cache->index_pos);
+  if (cache->index_pos != ULONG_MAX)
+    printf(format_num, "index_pos", cache->index_pos);
+  else
+    printf("\t%-10s %15s\n", "index_pos", "ULONG_MAX");
 
   printf("\t%-24s ", "index_mask");
   printb(cache->index_mask);
@@ -76,7 +79,7 @@ void cache_decode_debug(const Cache* cache, const char* cache_name) {
   printb(cache->tag_mask);
   printf("\n");
   
-  printf(format_num, "LRU_num_bit", cache->LRU_num_bits);
+  printf(format_num, "LRU_num_bits", cache->LRU_num_bits);
   printf(format_num, "dirty_pos", cache->dirty_pos);
   printf(format_num, "valid_pos", cache->valid_pos);
   printf(format_num, "table_tag_pos", cache->table_tag_pos);
@@ -85,6 +88,18 @@ void cache_decode_debug(const Cache* cache, const char* cache_name) {
 
   fflush(stdout);
 }
+
+void cache_invalidate(Cache* cache) {
+  for (size_t i = 0; i < cache->table_num_frames; i++) {
+    cache->table[i] &= ~(1lu << cache->valid_pos);
+  }
+}
+
+void cache_free(Cache* cache) {
+  free(cache->table);
+  free(cache); 
+}
+
 // Assumes proper inputs
 Cache* cache_new(const size_t num_sets, const size_t set_size, const size_t line_size, const bool write) {
   Cache* cache = malloc(sizeof(Cache));
@@ -128,8 +143,12 @@ Cache* cache_new(const size_t num_sets, const size_t set_size, const size_t line
   size_t num_tag_bits = MAX_ADDR_LEN - bit_pos;
   cache->tag_mask = ~(ULONG_MAX << num_tag_bits);
   
-  // table entry LRU bits
-  cache->LRU_num_bits = cache->dirty_pos = (cache->mode == DIRECT_MAPPED) ? 0 : set_size; 
+  // // table entry LRU bits
+  // cache->LRU_num_bits = cache->dirty_pos = (cache->mode == DIRECT_MAPPED) ? 0 : set_size;
+  
+  // TEMPORARY NO LRU BITS
+  cache->LRU_num_bits = cache->dirty_pos = 0;
+
   cache->valid_pos = cache->dirty_pos + 1;
   cache->table_tag_pos = cache->valid_pos + 1;
   
@@ -141,6 +160,8 @@ Cache* cache_new(const size_t num_sets, const size_t set_size, const size_t line
     goto fail;
   }
 
+  cache_invalidate(cache);
+
   return cache;
 
 fail:
@@ -148,4 +169,82 @@ fail:
   return NULL;
 }
 
+// returns TRUE on hit, FALSE on miss, only puts frame number into *frame on hit and frame is non-null.
+bool cache_check_fully(const Cache* cache, uint32_t address, size_t* frame) {
+  if (cache->mode != FULLY_ASSOCIATIVE) {
+    fprintf(stderr, "WARNING A non-FULLY-ASSOCIATIVE cache has been passed to the FULLY ASSOCIATIVE check.\n");
+    return false;
+  }
 
+  for (size_t set = 0; set < cache->table_num_frames; set++) {
+    CacheEntry entry = cache->table[set];
+    uint32_t addr_tag = (address >> cache->addr_tag_pos) & cache->tag_mask;
+    uint32_t entry_tag = (entry >> cache->table_tag_pos) & cache->tag_mask;
+    bool valid = (entry >> cache->valid_pos) & 1;
+
+    if (addr_tag == entry_tag && valid) {
+      if (frame) *frame = set;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// returns TRUE on hit, FALSE on miss, will always put frame number in *frame if non-null.
+bool cache_check_direct(const Cache* cache, uint32_t address, size_t* frame) {
+  if (cache->mode != DIRECT_MAPPED) {
+    fprintf(stderr, "WARNING A non-DIRECT-MAPPED cache has been passed to the DIRECT MAPPED check.\n");
+    return false;
+  }
+
+  size_t set = (address << cache->index_pos) & cache->index_mask;
+  if (frame) *frame = set;
+
+  CacheEntry entry = cache->table[set];
+  bool valid = (entry >> cache->valid_pos) & 1;
+  if (!valid) return false;
+
+  uint32_t addr_tag = (address << cache->addr_tag_pos) & cache->tag_mask;
+  uint32_t table_tag = (address << cache->table_tag_pos) & cache->tag_mask;
+ 
+  return addr_tag == table_tag; 
+}
+
+// returns TRUE on hit, FALSE on miss, only puts frame number into *frame on hit and frame is non-null.
+bool cache_check_set(const Cache* cache, uint32_t address, size_t* frame) {
+  if (cache->mode != SET_ASSOCIATIVE) {
+    fprintf(stderr, "WARNING A non-SET-ASSOCIATIVE cache has been passed to the SET_ASSOCIATIVE check.\n");
+    return false;
+  }
+  
+  size_t set = (address >> cache->index_pos) & cache->index_mask;
+  size_t start_frame = set * cache->set_size;
+  for (size_t i = start_frame; i < start_frame + set_size; i++) {
+    CacheEntry entry = cache->table[i];
+    
+    bool valid = (entry >> cache->valid_pos & 1);
+    if (!valid) continue;
+
+    uint32_t addr_tag = (address << cache->addr_tag_pos) & cache->tag_mask;
+    uint32_t table_tag = (address << cache->table_tag_pos) & cache->tag_mask;
+    
+    if (addr_tag == table_tag) {
+      if (frame) *frame = i;
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+bool cache_check(const Cache* cache, uint32_t address) {
+  switch(cache->mode) {
+    case FULLY_ASSOCIATIVE:
+      return cache_check_fully(cache, address);
+    case DIRECT_MAPPED:
+      return cache_check_direct(cache, address);
+    case SET_ASSOCIATIVE:
+      return cache_check_set(cache, address);
+  }
+}

@@ -8,5 +8,8 @@ main: config.c main.c cache.c util.c
 test: main
 	./main
 
+valgrind: main
+	valgrind --leak-check=full --show-leak-kinds=all ./main
+
 clean:
 	rm ./main

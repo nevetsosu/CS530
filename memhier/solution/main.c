@@ -23,11 +23,22 @@ int main() {
   }
   cache_decode_debug(L2, "L2");
 
+
+  // TEST CACHE
+  Cache* test_cache = cache_new(1, 16, 16, false);
+  if (!test_cache) {
+    fprintf(stderr, "Failed to initialize test_cache\n");
+    return 1;
+  }
+  cache_decode_debug(test_cache, "test_cache");
+
   // REQUIREMENTS
   // Max Reference address length is 32 bits
   // Inclusive Multi-level Caching Policy
   // LRU replacement for TLB, DC, L2, and Page Table
-  // PAGE FAULT: Invalidate associated TLB, DC, and L2 entries
-  
+  // PAGE FAULT: Invalidate associated TLB, DC, and L2 entries 
   free_config(config);
+  cache_free(dc);
+  cache_free(L2);
+  cache_free(test_cache);
 }
