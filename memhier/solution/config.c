@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "config.h"
+#include "config_consts.h"
 
 void print_config(const Config* config) {
   printf("Data TLB configuration\n");
@@ -28,11 +29,88 @@ void print_config(const Config* config) {
   printf("Toggles\n");
   printf("\tVirtual addresses: %c\n", config->virtual_addresses ? 'y' : 'n');
   printf("\tTLB: %c\n", config->use_tlb ? 'y' : 'n');
-  printf("\tL2: %c\n", config->use_L2 ? 'y' : 'n');
+  printf("\tL2: %c\n\n", config->use_L2 ? 'y' : 'n');
 }
 
 void free_config(Config* config) {
   free(config);
+}
+
+bool is_power2(size_t n) {
+  return n != 0 && (n & (n - 1)) == 0;
+}
+
+bool validate_config(const Config* config) {
+  // MAX TLB sets
+  if (config->tlb_num_sets > TLB_MAX_SETS) {
+    fprintf(stderr, "TLB Max number of sets is %lu.\n", TLB_MAX_SETS);
+    return false;
+  }
+
+  // MAX DC sets
+  if (config->dc_num_sets > DC_MAX_SETS) {
+    fprintf(stderr, "DC Max number of sets is %lu.\n", DC_MAX_SETS);
+    return false;
+  }
+
+  // Max set size (associativity)
+  if (config->tlb_set_size > MAX_ASSOCIATIVITY || \
+      config->dc_set_size  > MAX_ASSOCIATIVITY || \
+      config->L2_set_size  > MAX_ASSOCIATIVITY) 
+  {
+    fprintf(stderr, "Max set size (associativity) is %lu.\n", MAX_ASSOCIATIVITY);
+    return false;
+  }
+
+  // Max Number of virtual pages
+  if (config->pt_num_vpages > NUM_VPAGES_MAX) {
+    fprintf(stderr, "PAGE TABLE Max number of virtual pages is %lu.\n", NUM_VPAGES_MAX);
+    return false;
+  }
+
+  // Max Number of physical pages
+  if (config->pt_num_ppages > NUM_PPAGES_MAX) {
+    fprintf(stderr, "PAGE TABLE Max number of physical pages is %lu.\n", NUM_PPAGES_MAX);
+    return false;
+  }
+
+  // Min Data line size
+  if (config->dc_line_size < MIN_LINE_SIZE) {
+    fprintf(stderr, "DC Min Line size is %lu.\n", MIN_LINE_SIZE);
+    return false;
+  }
+
+  // L2 Line size should be >= DC line 
+  if (config->L2_line_size < config->dc_line_size) {
+    fprintf(stderr, "L2 Line size should be greater than or equal to DC line size");
+    return false;
+  }
+
+  // Values that should be powers of 2
+  if (!is_power2(config->tlb_set_size)) {
+    fprintf(stderr, "TLB Line size should be a power of 2.\n");
+    return false;
+  } else if (!is_power2(config->dc_set_size)) {
+    fprintf(stderr, "DC Set size should be a power of 2.\n");
+    return false;
+  } else if (!is_power2(config->dc_line_size)) {
+    fprintf(stderr, "DC Line size should be a power of 2.\n");
+    return false;
+  } else if (!is_power2(config->L2_set_size)) {                       //! THIS RULE IS NOT STRICTLY STATED IN THE REQUIREMENTS
+    fprintf(stderr, "L2 Set size should be a power of 2.\n");
+    return false;
+  } else if (!is_power2(config->L2_line_size)) {                      //! THIS RULE IS NOT STRICTLY STATED IN THE REQUIREMENTS
+    fprintf(stderr, "L2 Line size should be a power of 2.\n");
+    return false;
+  } else if (!is_power2(config->pt_num_vpages)) {
+    fprintf(stderr, "PAGE TABLE Number of virtual pages should be power of 2.\n");
+    return false;
+  } else if (!is_power2(config->pt_num_ppages)) {
+    fprintf(stderr, "PAGE TABLE Number of physical pages should be power of 2.\n");
+    return false;
+  }
+
+    return true;
 }
 
 Config* read_config(const char* filename) {
@@ -243,6 +321,11 @@ Config* read_config(const char* filename) {
       goto config_fail;
   }
   
+
+  // CONSTRAINT VALIDATION
+  fprintf(stderr, "Checking constraint validations\n"); 
+  if (!validate_config(config)) goto config_fail;
+
   return config;
 
 config_fail:
