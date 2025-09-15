@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <stdio.h>
+#include <string.h>
 #include "config_consts.h"
 #include "util.h"
 
@@ -90,9 +91,7 @@ void cache_decode_debug(const Cache* cache, const char* cache_name) {
 }
 
 void cache_invalidate(Cache* cache) {
-  for (size_t i = 0; i < cache->table_num_frames; i++) {
-    cache->table[i] &= ~(1lu << cache->valid_pos);
-  }
+  memset(cache->table, 0, cache->table_num_frames * sizeof(CacheEntry));
 }
 
 void cache_free(Cache* cache) {
