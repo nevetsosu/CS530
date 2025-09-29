@@ -211,6 +211,12 @@ uint32_t _cache_address_from_tag_index(const Cache* cache, const uint32_t tag, c
   return ((tag & cache->tag_mask) << cache->addr_tag_pos) | ((index & cache->index_mask) << cache->index_pos);
 }
 
+void cache_writeback(Cache* cache, const uint32_t address) {
+  // write, but dont update the current address information
+  // i dont know if this should also update the written to cache stats or not
+  printf("called function cache_writeback\n");
+}
+
 void _cache_evict(const Cache* cache, const uint32_t index) {
   size_t start_frame = index * cache->set_size;
   size_t r = rand() % cache->set_size;
@@ -221,7 +227,7 @@ void _cache_evict(const Cache* cache, const uint32_t index) {
   uint32_t dirty_tag = (entry >> cache->table_tag_pos) & cache->tag_mask;
   if (dirty) {
     if (cache->next)
-      cache_write(cache->next, _cache_address_from_tag_index(cache, dirty_tag, index)); 
+      cache_writeback(cache->next, _cache_address_from_tag_index(cache, dirty_tag, index)); 
     else
     {
       //! TODO WRITE TO MEMORY
@@ -239,7 +245,7 @@ bool _cache_insert(const Cache* cache, const uint32_t tag, const uint32_t index)
     bool valid = (entry >> cache->valid_pos) & 1;
     if (valid) continue;
     
-    cache->table[index] = _cache_new_entry(cache, tag);
+    cache->table[i] = _cache_new_entry(cache, tag);
     return true;
   }
 
@@ -279,14 +285,19 @@ bool cache_read(Cache* cache, const uint32_t address) {
   }
   
   // If backing, read backing, otherwise go to memory
-  if (cache->next) cache_read(cache->next, address);
+  if (cache->next) {
+    cache->stats->access_next = true;
+    cache_read(cache->next, address);
+  }
   else {
+    cache->stats->access_next = false;
     // goto memory
   }
 
+  // this shouldnt have to be done more than once, than repeats can tell me if something is off
   while (!_cache_insert(cache, tag, index)) {
     _cache_evict(cache, index);
-    printf("evicting from index: %u\n", index);
+    // printf("evicting from index: %u\n", index);
   }
 
   cache->stats->resolved = false;
@@ -302,4 +313,3 @@ void cache_write(Cache* cache, const uint32_t address) {
     return;
   }
 }
-

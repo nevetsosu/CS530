@@ -10,6 +10,8 @@ struct CacheStats {
   uint32_t tag;
   uint32_t index;
   bool resolved;
+  bool access_next;
+
   enum AccessType type;
 
   size_t hits;
