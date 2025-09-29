@@ -7,17 +7,16 @@
 #include <string.h>
 #include "config_consts.h"
 #include "util.h"
+#include "cache.h"
 
 typedef uint64_t CacheEntry;
 typedef int CacheMode;
 
-#define FULLY_ASSOCIATIVE 0
-#define DIRECT_MAPPED 1
-#define SET_ASSOCIATIVE 2
+enum CacheMode {
+  FULLY_ASSOCIATIVE, DIRECT_MAPPED, SET_ASSOCIATIVE
+};
 
 #define CACHE_ENTRY_BITSIZE (sizeof(CacheEntry) * 8)
-
-typedef struct Cache Cache;
 
 struct Cache {
   // operation mode
@@ -37,7 +36,6 @@ struct Cache {
   size_t addr_tag_pos;    // the addr tag is the rest of the upper part of the address
 
   // table entry decoding information
-  size_t LRU_num_bits;
   size_t dirty_pos;
   size_t valid_pos;
   size_t table_tag_pos;
@@ -52,6 +50,7 @@ struct Cache {
   // multi-level cache access
   Cache* next;
   Cache* prev;
+  CacheStats* stats;
 };
 
 void cache_decode_debug(const Cache* cache, const char* cache_name) {
@@ -85,7 +84,6 @@ void cache_decode_debug(const Cache* cache, const char* cache_name) {
   printb(cache->tag_mask);
   printf("\n");
   
-  printf(format_num, "LRU_num_bits", cache->LRU_num_bits);
   printf(format_num, "dirty_pos", cache->dirty_pos);
   printf(format_num, "valid_pos", cache->valid_pos);
   printf(format_num, "table_tag_pos", cache->table_tag_pos);
@@ -101,16 +99,7 @@ void cache_connect(Cache* prev, Cache* next) {
 }
 
 void _cache_decode(const Cache* cache, const uint32_t address, uint32_t* tag, uint32_t* index) {
-  switch(cache->mode) {
-    case FULLY_ASSOCIATIVE:
-      *index = 1;
-      break;
-    case DIRECT_MAPPED: 
-    case SET_ASSOCIATIVE:
-      *index = (address >> cache->index_pos) & cache->index_mask;
-      break;
-  }
-
+  *index = (address >> cache->index_pos) & cache->index_mask;
   *tag = (address >> cache->addr_tag_pos) & cache->tag_mask;
 }
 
@@ -121,12 +110,14 @@ void cache_invalidate_all(Cache* cache) {
 
 void cache_free(Cache* cache) {
   free(cache->table);
+  free(cache->stats);
   free(cache); 
 }
 
 // Assumes proper inputs
 Cache* cache_new(const size_t num_sets, const size_t set_size, const size_t line_size, const bool write) {
   Cache* cache = malloc(sizeof(Cache));
+  cache->stats = calloc(1, sizeof(CacheStats));
   
   // configuration information
   cache->num_sets = num_sets;
@@ -135,14 +126,13 @@ Cache* cache_new(const size_t num_sets, const size_t set_size, const size_t line
   cache->write = write;
   cache->next = cache->prev = NULL;
 
-  // determine operation mode
-  if (set_size == 1)
-    cache->mode = DIRECT_MAPPED;
-  else if (num_sets == 1) 
+  if (num_sets == 1)
     cache->mode = FULLY_ASSOCIATIVE;
+  else if (set_size == 1)
+    cache->mode = DIRECT_MAPPED;
   else
     cache->mode = SET_ASSOCIATIVE;
-  
+
   size_t bit_pos = 0;
 
   // addr offset decoding
@@ -151,15 +141,10 @@ Cache* cache_new(const size_t num_sets, const size_t set_size, const size_t line
   bit_pos += num_offset_bits;
 
   // addr index decoding
-  if (cache->mode != FULLY_ASSOCIATIVE) {
-    size_t num_index_bits = log_2(num_sets);
-    cache->index_pos = bit_pos;
-    cache->index_mask = ~(ULONG_MAX << num_index_bits);
-    bit_pos += num_index_bits;
-  } else {
-    cache->index_pos = ULONG_MAX;
-    cache->index_mask = ULONG_MAX;
-  }
+  size_t num_index_bits = log_2(num_sets);
+  cache->index_pos = bit_pos;
+  cache->index_mask = ~(ULONG_MAX << num_index_bits);
+  bit_pos += num_index_bits;
 
   // addr tag decoding
   cache->addr_tag_pos = bit_pos;
@@ -168,12 +153,6 @@ Cache* cache_new(const size_t num_sets, const size_t set_size, const size_t line
   size_t num_tag_bits = MAX_ADDR_LEN - bit_pos;
   cache->tag_mask = ~(ULONG_MAX << num_tag_bits);
   
-  // // table entry LRU bits
-  // cache->LRU_num_bits = cache->dirty_pos = (cache->mode == DIRECT_MAPPED) ? 0 : set_size;
-  
-  // TEMPORARY NO LRU BITS
-  cache->LRU_num_bits = cache->dirty_pos = 0;
-
   cache->valid_pos = cache->dirty_pos + 1;
   cache->table_tag_pos = cache->valid_pos + 1;
   
@@ -194,6 +173,10 @@ fail:
   return NULL;
 }
 
+CacheStats* cache_stats(const Cache* cache) {
+  return cache->stats;
+}
+
 // returns TRUE if tags in the entry and address match, returns FALSE otherwise
 bool cache_tag_match(const Cache* cache, const uint32_t tag, const CacheEntry entry) {
   uint32_t entry_tag = (entry >> cache->table_tag_pos) & cache->tag_mask;
@@ -201,70 +184,20 @@ bool cache_tag_match(const Cache* cache, const uint32_t tag, const CacheEntry en
 }
 
 // returns TRUE on hit, FALSE on miss, only puts frame number into *frame on hit and frame is non-null.
-bool _cache_check_full(const Cache* cache, const uint32_t tag, const uint32_t index) {
-  if (cache->mode != FULLY_ASSOCIATIVE) {
-    fprintf(stderr, "WARNING A non-FULLY-ASSOCIATIVE cache has been passed to the FULLY ASSOCIATIVE check.\n");
-    return false;
-  }
-
-  for (size_t f = 0; f < cache->table_num_frames; f++) {
-    CacheEntry entry = cache->table[f];
-
-    bool valid = (entry >> cache->valid_pos) & 1;
-    if (!valid) continue;
-
-    if (cache_tag_match(cache, tag, entry)) return true;
-  }
-
-  return false;
-}
-
-// returns TRUE on hit, FALSE on miss, will always put frame number in *frame if non-null.
-bool _cache_check_direct(const Cache* cache, const uint32_t tag, const uint32_t index) {
-  if (cache->mode != DIRECT_MAPPED) {
-    fprintf(stderr, "WARNING A non-DIRECT-MAPPED cache has been passed to the DIRECT MAPPED check.\n");
-    return false;
-  }
-
-  CacheEntry entry = cache->table[index];
-
-  bool valid = (entry >> cache->valid_pos) & 1;
-  if (!valid) return false;
-
-  return cache_tag_match(cache, tag, entry); 
-}
-
-// returns TRUE on hit, FALSE on miss, only puts frame number into *frame on hit and frame is non-null.
 // always puts set number in *set regardless of hit/miss if set is non-null.
-bool _cache_check_set(const Cache* cache, const uint32_t tag, const uint32_t index) {
-  if (cache->mode != SET_ASSOCIATIVE) {
-    fprintf(stderr, "WARNING A non-SET-ASSOCIATIVE cache has been passed to the SET_ASSOCIATIVE check.\n");
-    return false;
-  }
-
+bool _cache_check(const Cache* cache, const uint32_t tag, const uint32_t index, size_t* frame) {
   size_t start_frame = index * cache->set_size;
   for (size_t i = start_frame; i < start_frame + cache->set_size; i++) {
     CacheEntry entry = cache->table[i];
     
     bool valid = (entry >> cache->valid_pos) & 1;
     if (!valid) continue;
-    else if (cache_tag_match(cache, tag, entry)) return true;
+    else if (cache_tag_match(cache, tag, entry)) {
+      if (frame) *frame = i;
+      return true;
+    }
   }
   
-  return false;
-}
-
-bool _cache_check(const Cache* cache, const uint32_t tag, const uint32_t index) {
-  switch (cache->mode) {
-    case FULLY_ASSOCIATIVE:
-      return _cache_check_full(cache, tag, index);
-    case DIRECT_MAPPED:
-      return _cache_check_direct(cache, tag, index);
-    case SET_ASSOCIATIVE:
-      return _cache_check_set(cache, tag, index);
-  }
-
-  fprintf(stderr, "WARNING A cache with an invalid mode was passed to cache_check\n"); 
   return false;
 }
 
@@ -274,30 +207,31 @@ CacheEntry _cache_new_entry(const Cache* cache, const uint32_t tag) {
   return new_entry;
 }
 
-bool _cache_insert_full(const Cache* cache, const uint32_t tag, const uint32_t index) {
-  (void) index;
-   for (ssize_t i = 0; i < cache->set_size; i++) {
-        CacheEntry entry = cache->table[i];
-        bool valid = (entry >> cache->valid_pos) & 1;
-        if (valid) continue;
-        
-        cache->table[i] = _cache_new_entry(cache, tag);
-   }
-
-   return false;
-}  
-
-bool _cache_insert_direct(const Cache* cache, const uint32_t tag, const uint32_t index) {
-  CacheEntry entry = cache->table[index];
-  
-  bool valid = (entry >> cache->valid_pos) & 1;
-  if (valid) return false;
-  
-  cache->table[index] = _cache_new_entry(cache, tag);
-  return true;
+uint32_t _cache_address_from_tag_index(const Cache* cache, const uint32_t tag, const uint32_t index) {
+  return ((tag & cache->tag_mask) << cache->addr_tag_pos) | ((index & cache->index_mask) << cache->index_pos);
 }
 
-bool _cache_insert_set(const Cache* cache, const uint32_t tag, const uint32_t index) {
+void _cache_evict(const Cache* cache, const uint32_t index) {
+  size_t start_frame = index * cache->set_size;
+  size_t r = rand() % cache->set_size;
+
+  // evict (WITHOUT WRITE BACK WRITE NOW)
+  CacheEntry entry = cache->table[start_frame + r];
+  bool dirty = (entry >> cache->dirty_pos) & 1;
+  uint32_t dirty_tag = (entry >> cache->table_tag_pos) & cache->tag_mask;
+  if (dirty) {
+    if (cache->next)
+      cache_write(cache->next, _cache_address_from_tag_index(cache, dirty_tag, index)); 
+    else
+    {
+      //! TODO WRITE TO MEMORY
+    }
+  }
+
+  cache->table[start_frame + r] = 0;
+}
+
+bool _cache_insert(const Cache* cache, const uint32_t tag, const uint32_t index) {
   size_t start_frame = index * cache->set_size;
   for (size_t i = start_frame; i < start_frame + cache->set_size; i++) {
     CacheEntry entry = cache->table[i];
@@ -312,21 +246,6 @@ bool _cache_insert_set(const Cache* cache, const uint32_t tag, const uint32_t in
   return false;
 }
 
-// TODO: Change the insert functions to also cascade evictions
-bool _cache_insert(Cache* cache, const uint32_t tag, const uint32_t index) {
-  switch(cache->mode) {
-    case FULLY_ASSOCIATIVE:
-      return _cache_insert_full(cache, tag, index);
-    case DIRECT_MAPPED:
-      return _cache_insert_set(cache, tag, index);
-    case SET_ASSOCIATIVE:
-      return _cache_insert_set(cache, tag, index);
-  }
-
-  fprintf(stderr, "WARNING cache_insert was passed a cache with an invalid mode.\n");
-  return false;
-}
-
 // invalidate a cache entry without writing back if dirty.
 bool cache_invalidate_entry(Cache* cache, const uint32_t address) {
   size_t frame;
@@ -336,18 +255,28 @@ bool cache_invalidate_entry(Cache* cache, const uint32_t address) {
 
   _cache_decode(cache, address, &tag, &index);
 
-  if (!_cache_check(cache, tag, index)) return false;
+  if (!_cache_check(cache, tag, index, &frame)) return false;
   else cache->table[frame] = 0;
 
   return true;
 }
 
-void cache_read(Cache* cache, const uint32_t address) {
+bool cache_read(Cache* cache, const uint32_t address) {
   uint32_t tag;
   uint32_t index;
   _cache_decode(cache, address, &tag, &index);
+  
+  cache->stats->type = READ;
+  cache->stats->address = address;
+  cache->stats->tag = tag;
+  cache->stats->index = index;
 
-  if (_cache_check(cache, tag, index)) return;      // HIT, update stats and return
+  cache->stats->total_accesses += 1;
+  if (_cache_check(cache, tag, index, NULL)) {
+    cache->stats->hits += 1;
+    cache->stats->resolved = true;
+    return true;
+  }
   
   // If backing, read backing, otherwise go to memory
   if (cache->next) cache_read(cache->next, address);
@@ -355,7 +284,13 @@ void cache_read(Cache* cache, const uint32_t address) {
     // goto memory
   }
 
-  _cache_insert(cache, tag, index);       // TODO: This should also handle evictions and write backs to the next backing store
+  while (!_cache_insert(cache, tag, index)) {
+    _cache_evict(cache, index);
+    printf("evicting from index: %u\n", index);
+  }
+
+  cache->stats->resolved = false;
+  return false;
 }
 
 void cache_write(Cache* cache, const uint32_t address) {
@@ -363,8 +298,7 @@ void cache_write(Cache* cache, const uint32_t address) {
   uint32_t index;
 
   _cache_decode(cache, address, &tag, &index);
-  if (_cache_check(cache, tag, index)) {             // HIT, set dirty bit and return
-    
+  if (_cache_check(cache, tag, index, NULL)) {             // HIT, set dirty bit and return 
     return;
   }
 }

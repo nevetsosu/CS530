@@ -1,6 +1,10 @@
 #include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include "config.h"
 #include "cache.h"
+
+#define LINESIZE 20
 
 int main() {
   Config* config = read_config("../trace.config");
@@ -23,22 +27,42 @@ int main() {
   }
   cache_decode_debug(L2, "L2");
 
+  // Connect the two caches
+  cache_connect(dc, L2);
+  
+  char* buf = malloc(LINESIZE);
+  size_t size = LINESIZE;
+  char read_write;
+  uint32_t address; 
 
-  // TEST CACHE
-  Cache* test_cache = cache_new(1, 16, 16, false);
-  if (!test_cache) {
-    fprintf(stderr, "Failed to initialize test_cache\n");
-    return 1;
+  CacheStats* dc_stats = cache_stats(dc);
+  CacheStats* L2_stats = cache_stats(L2);
+
+  while (getline(&buf, &size, stdin) != -1) {
+    sscanf(buf, "%c:%x", &read_write, &address);
+
+    bool hit;
+    switch (read_write) {
+      case 'W':
+        break;
+      case 'R':
+        hit = cache_read(dc, address);
+        break;
+      default:
+        printf("hierarchy: unexpected access type\n");
+        goto cleanup;
+    }
+    
+    printf("%4x, %s, index: %u, tag: %u, resolved: %d\n", dc_stats->address, dc_stats->type == READ ? "read" : "write", dc_stats->index, dc_stats->tag, dc_stats->resolved);
   }
-  cache_decode_debug(test_cache, "test_cache");
 
   // REQUIREMENTS
   // Max Reference address length is 32 bits
   // Inclusive Multi-level Caching Policy
   // LRU replacement for TLB, DC, L2, and Page Table
   // PAGE FAULT: Invalidate associated TLB, DC, and L2 entries 
+cleanup:
   free_config(config);
   cache_free(dc);
   cache_free(L2);
-  cache_free(test_cache);
 }
