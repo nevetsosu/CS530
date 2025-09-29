@@ -1,8 +1,9 @@
 CFLAGS=-Wall -Wextra -ggdb
+OBJS = config.c main.c cache.c util.c palloc.c ptable.c
 
 all: main
 
-main: config.c main.c cache.c util.c
+main: $(OBJS)
 	gcc $(CFLAGS) -o $@ $^
 
 test: main

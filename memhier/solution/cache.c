@@ -212,6 +212,8 @@ uint32_t _cache_address_from_tag_index(const Cache* cache, const uint32_t tag, c
 }
 
 void cache_writeback(Cache* cache, const uint32_t address) {
+  (void) cache;
+  (void) address;
   // write, but dont update the current address information
   // i dont know if this should also update the written to cache stats or not
   printf("called function cache_writeback\n");
@@ -281,6 +283,7 @@ bool cache_read(Cache* cache, const uint32_t address) {
   if (_cache_check(cache, tag, index, NULL)) {
     cache->stats->hits += 1;
     cache->stats->resolved = true;
+    cache->stats->access_next = false;
     return true;
   }
   
