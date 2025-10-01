@@ -1,8 +1,8 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -Wpedantic -ggdb
 
-INC_DIR = ./
-SRC_DIR = ./
+INC_DIR = ./include
+SRC_DIR = ./src
 TARGET = memhier
 
 SRCS = $(wildcard $(SRC_DIR)/*.c)
