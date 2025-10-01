@@ -1,16 +1,23 @@
-CFLAGS=-Wall -Wextra -ggdb
-OBJS = config.c main.c cache.c util.c palloc.c ptable.c
+CC = gcc
+CFLAGS = -Wall -Wextra -Wpedantic -ggdb
 
-all: main
+INC_DIR = ./
+SRC_DIR = ./
+TARGET = memhier
 
-main: $(OBJS)
-	gcc $(CFLAGS) -o $@ $^
+SRCS = $(wildcard $(SRC_DIR)/*.c)
 
-test: main
-	./main
+all: $(TARGET)
 
-valgrind: main
-	valgrind --leak-check=full --show-leak-kinds=all ./main
+$(TARGET): $(SRCS)
+	$(CC) $(CFLAGS) -I$(INC_DIR) -o $@ $^
+
+test: $(TARGET)
+	./$(TARGET)
+
+valgrind: $(TARGET)
+	valgrind --leak-check=full --show-leak-kinds=all ./$(TARGET)
 
 clean:
-	rm ./main
+	rm -f $(TARGET)
+
