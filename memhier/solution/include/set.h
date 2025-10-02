@@ -1,20 +1,30 @@
 #include <stddef.h>
+#include <stdint.h>
 
 //move this to header
-#define Set_TRAVERSE_RIGHT(set, cur)  for (cur = set_get_sentinel(set)->next; cur != sentinel; cur = cur->next)
-#define Set_TRAVERSE_LEFT(set, cur)   for (cur = set_get_sentinel(set)->prev; cur != sentinel; cur = cur->prev)
+#define SET_TRAVERSE_RIGHT(cur, sentinel) for (cur = sentinel->next; cur != sentinel; cur = cur->next) 
+#define SET_TRAVERSE_LEFT(cur, sentinel) for (cur = sentinel->prev; cur != sentinel; cur = cur->prev)
+#define SET_TRAVERSE_FLAT(index, set) for (index = 0; index < set->size; index++)
 
 // move this to header
 typedef struct SetNode SetNode;
 typedef struct Set Set;
 
-Set* set_new(size_t size);
-void set_free(Set* set);
+struct SetNode {
+  void* data;   
+  SetNode* next;
+  SetNode* prev;
+};
 
-SetNode* set_get_mru(Set* set);
-SetNode* set_get_set(Set* set);
-void set_set_mru(Set* set, SetNode* node);
-void set_set_set(Set* set, SetNode* node);
+struct Set {
+  size_t size;
+  SetNode* node_list;   // the first node should always be considered the sentinel
+};
 
-SetNode* set_sentinel(Set* set);
-void* setnode_data(SetNode* node);
+Set* Set_new(const size_t size);
+void Set_free(Set* set);
+
+SetNode* Set_get_mru(const Set* set);
+SetNode* Set_get_lru(const Set* set);
+void Set_set_mru(Set* set, SetNode* node);
+void Set_set_lru(Set* set, SetNode* node);

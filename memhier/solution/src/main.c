@@ -101,9 +101,9 @@ int main() {
         printf("hierarchy: unexpected access type\n");
         goto cleanup;
     }
-    printf("%08x %6x %4x %6x %3x %-4s %-4s %4x %6x %3x %-4s", address, pt_stats->vpage, pt_stats->offset, 0, 0, "N/A", pt_stats->hit ? "hit" : "miss", pt_stats->ppage, dc_stats->tag, dc_stats->index, dc_stats->resolved ? "hit" : "miss");
+    printf("%08x %6x %4x %6x %3x %-4s %-4s %4x %6x %3x %-4s", address, pt_stats->vpage, pt_stats->offset, 0, 0, "N/A", pt_stats->hit ? "hit" : "miss", pt_stats->ppage, dc_stats->tag, dc_stats->index, dc_stats->hit ? "hit" : "miss");
     if (dc_stats->access_next)
-      printf(" %6x %3x %4s\n", L2_stats->tag, L2_stats->index, L2_stats->resolved ? "hit" : "miss");
+      printf(" %6x %3x %4s\n", L2_stats->tag, L2_stats->index, L2_stats->hit ? "hit" : "miss");
     else
       fputc('\n', stdout);
   }

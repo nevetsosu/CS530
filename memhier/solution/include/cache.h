@@ -1,5 +1,6 @@
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 enum AccessType {
   READ, WRITE
@@ -9,7 +10,7 @@ struct CacheStats {
   uint32_t address;
   uint32_t tag;
   uint32_t index;
-  bool resolved;
+  bool hit;
   bool access_next;
 
   enum AccessType type;
@@ -24,7 +25,7 @@ typedef struct CacheStats CacheStats;
 Cache* cache_new(const size_t num_sets, const size_t set_size, const size_t line_size, const bool write);
 
 void cache_write(Cache* cache, const uint32_t address);
-bool cache_read(Cache* cache, const uint32_t address);
+void cache_read(Cache* cache, const uint32_t address);
 void cache_invalidate_all(Cache* cache);
 bool cache_invalidate_entry(Cache* cache, const uint32_t address);
 void cache_free(Cache* cache);

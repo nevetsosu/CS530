@@ -16,8 +16,8 @@ struct PTableEntry {
 };
 
 struct PTable {
-  size_t num_entries;
-  size_t physical_pages;
+  size_t vpages;
+  size_t ppages;
   size_t page_size;
   
   size_t offset_bits;
@@ -25,18 +25,18 @@ struct PTable {
 
   PAlloc* palloc;
   PTableStats* stats;
-  PTableEntry* table;  
+  PTableEntry* table; // replace this with a Set, Use the sentinel to access the nodelist for O(1) random access by index.
 };
 
-PTable* ptable_new(const size_t virtual_pages, const size_t physical_pages, const size_t page_size) { 
+PTable* ptable_new(const size_t virtual_pages, const size_t ppages, const size_t page_size) { 
   PTable* ptable = malloc(sizeof(PTable));
-  ptable->num_entries = virtual_pages;
-  ptable->physical_pages = physical_pages;
+  ptable->vpages = virtual_pages;
+  ptable->ppages = ppages;
   ptable->page_size = page_size;
   ptable->offset_bits = log_2(page_size);
   ptable->page_offset_mask = ~(~0u << ptable->offset_bits);
   ptable->table = calloc(virtual_pages, sizeof(PTableEntry));
-  ptable->palloc = palloc_new(physical_pages);
+  ptable->palloc = palloc_new(ppages);
   ptable->stats = malloc(sizeof(PTableStats));
   return ptable;
 }
