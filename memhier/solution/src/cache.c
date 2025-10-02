@@ -191,6 +191,7 @@ SetNode* _cache_evict(const Cache* cache, const uint32_t index) {
   // write back to cache
   // OR
   // write back to memory
+  return node;
 }
 
 bool _cache_insert(const Cache* cache, const uint32_t tag, const uint32_t index) {
