@@ -59,7 +59,8 @@ int main() {
   size_t size = LINESIZE;
   char read_write;
   uint32_t address; 
-  
+  uint32_t paddress;
+
   size_t reads = 0;
   size_t writes = 0;
   
@@ -73,20 +74,32 @@ int main() {
   printf("-------- ------ ---- ------ --- ---- ---- ---- ------ --- ---- ------ --- ----\n");
 
   while (getline(&buf, &size, stdin) != -1) {
-    sscanf(buf, "%c:%x", &read_write, &address);
+    if (sscanf(buf, "%c:%x", &read_write, &address) != 2) {
+      fprintf(stderr, "failed to parse\n");
+      continue;
+    }
     
     // ADDRESS TRANSLATION
     if (config->virtual_addresses) {
       // check if the virtual address is too large
+      if (address > config->pt_page_size * config->pt_num_vpages) {
+        fprintf(stderr, "virtual address too large\n");
+        continue;
+      }
 
       if (config->use_tlb) {
-        printf("TLB isn't ready yet");
-        address = ptable_virt_phys(ptable, address);
+        printf("TLB isn't ready yet\n");
+        paddress = ptable_virt_phys(ptable, address);
         //! TODO address = tlb_translation
       } else
-        address = ptable_virt_phys(ptable, address); 
+        paddress = ptable_virt_phys(ptable, address); 
     } else {
       // check if the physical address is too large
+      if (address > config->pt_page_size * config->pt_num_ppages) {
+        fprintf(stderr, "physical address too large\n");
+        continue;
+      }
+      paddress = address;
     }
 
     // reset inserts
@@ -96,11 +109,11 @@ int main() {
     switch (read_write) {
       case 'W':
         writes += 1;
-        cache_write(dc, address, true);
+        cache_write(dc, paddress, true);
         break;
       case 'R':
         reads += 1;
-        cache_read(dc, address);
+        cache_read(dc, paddress);
         break;
       default:
         printf("hierarchy: unexpected access type\n");

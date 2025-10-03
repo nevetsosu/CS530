@@ -108,10 +108,8 @@ Cache* cache_new(const size_t num_sets, const size_t set_size, const size_t line
   
   // configure sets and cache entries 
   for (size_t i = 0; i < num_sets; i++) {
-    fprintf(stderr, "i: %lu\n", i);
     Set* set = cache->sets[i] = Set_new(set_size);
     
-    fprintf(stderr, "to next\n");
     // sentinel will also be assigned a CacheEntry (though itll never be used)
     // This makes it easier to handle a continous CacheEntry array
     CacheEntry* entries = calloc(set_size + 1, sizeof(CacheEntry));
@@ -122,7 +120,6 @@ Cache* cache_new(const size_t num_sets, const size_t set_size, const size_t line
       node_list[j].data = (void*)(entries + j);
     }
 
-    fprintf(stderr, "to next\n");
   }
 
   // fill in decode data

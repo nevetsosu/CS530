@@ -17,7 +17,7 @@ void _Set_disconnect(SetNode* node) {
 
   // Connect the lfet and right nodes
   prev->next = next;
-  prev->prev = prev;
+  next->prev = prev;
 
   // null out current node pointers
   node->next = NULL;

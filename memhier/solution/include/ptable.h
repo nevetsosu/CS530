@@ -14,6 +14,7 @@ struct PTableStats {
 
   size_t hits;
   size_t total_accesses;
+  size_t disk_accesses;
 };
 
 PTable* ptable_new(size_t virtual_pages, size_t physical_pages, size_t page_size);
