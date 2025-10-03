@@ -5,7 +5,6 @@
 
 #include "util.h"
 #include "ptable.h"
-#include "palloc.h"
 #include "set.h"
 
 typedef struct TableEntry TableEntry;
@@ -89,7 +88,6 @@ uint32_t _ptable_evict(PTable* ptable) {
     fprintf(stderr, "The evictor was called but LRU was already invalid?");
    
   ptable->vpage_table[p_entry->page].valid = false;
-  ptable->stats->disk_accesses += 1;
 
   return ppage;
 } 
@@ -105,6 +103,7 @@ bool _ptable_get(PTable* ptable, uint32_t vpage, uint32_t* ppage) {
     return true;
   }
   
+  ptable->stats->disk_accesses += 1;
   // search for free physical page
   for (size_t i = 0; i < ptable->ppages; ptable->cur_ppage = (ptable->cur_ppage + 1) % ptable->ppages, i++) {
     TableEntry* p_entry = ptable->ppage_table + ptable->cur_ppage;

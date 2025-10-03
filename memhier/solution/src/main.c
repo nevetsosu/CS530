@@ -7,6 +7,14 @@
 
 #define LINESIZE 20
 
+struct RefStats {
+  size_t memory_refs;
+  size_t pt_refs;
+  size_t disk_refs;
+};
+
+typedef struct RefStats RefStats;
+
 void print_cache_stats(const CacheStats* stats, const char* name) {
   size_t misses = stats->total_accesses - stats->hits;
   printf("%2s %-14s: %lu\n", name, "hits", stats->hits);
@@ -25,6 +33,13 @@ void print_pt_stats(const PTableStats* ptable) {
   printf("%-17s: %lu\n", "pt faults", ptable->total_accesses - ptable->hits);
   printf("%-17s: %lf\n", "pt hit ratio", (double) ptable->hits / (double) ptable->total_accesses); 
 }
+
+void print_ref_stats(const RefStats* ref_stats) {
+  printf("%-17s: %lu\n", "main memory refs", ref_stats->memory_refs); 
+  printf("%-17s: %lu\n", "page table refs", ref_stats->pt_refs);
+  printf("%-17s: %lu\n", "disk refs", ref_stats->disk_refs);
+}
+
 
 int main() {
   Config* config = read_config("../trace.config");
@@ -125,6 +140,16 @@ int main() {
     else
       fputc('\n', stdout);
   }
+
+  // Check Stats
+  if (dc_stats->mem_accesses > 0) {
+    fprintf(stderr, "[WARNING] DC cache has memory references??\n");
+  }
+
+  RefStats ref_stats;
+  ref_stats.memory_refs = L2_stats->mem_accesses;
+  ref_stats.pt_refs = pt_stats->total_accesses;
+  ref_stats.disk_refs = pt_stats->disk_accesses;
   
   printf("\nSimiulation Statistics\n\n");
 
@@ -136,6 +161,9 @@ int main() {
   print_cache_stats(L2_stats, "L2");
   fputc('\n', stdout);
   print_rw_stats(reads, writes);
+  fputc('\n', stdout);
+  print_ref_stats(&ref_stats);
+
 
   // REQUIREMENTS
   // Max Reference address length is 32 bits
