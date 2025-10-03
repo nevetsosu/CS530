@@ -37,7 +37,7 @@ int main() {
   PTable* ptable = ptable_new(config->pt_num_vpages, config->pt_num_ppages, config->pt_page_size);
 
   // DC CACHE
-  Cache* dc = cache_new(config->dc_num_sets, config->dc_set_size, config->dc_line_size, config->dc_write);
+  Cache* dc = cache_new(config->dc_num_sets, config->dc_set_size, config->dc_line_size, config->dc_write ? WRITE_THROUGH : WRITE_BACK, config->dc_write ? NO_WRALLOC : WRALLOC);
   if (!dc) {
     fprintf(stderr, "Failed to initialize dc\n");
     return 1;
@@ -45,7 +45,7 @@ int main() {
   cache_decode_debug(dc, "DC");
   
   // L2 CACHE
-  Cache* L2 = cache_new(config->L2_num_sets, config->L2_set_size, config->L2_line_size, config->L2_write);
+  Cache* L2 = cache_new(config->L2_num_sets, config->L2_set_size, config->L2_line_size, config->L2_write ? WRITE_THROUGH : WRITE_BACK, config->L2_write ? NO_WRALLOC : WRALLOC);
   if (!L2) {
     fprintf(stderr, "Failed to initialize L2\n");
     return 1;
@@ -89,9 +89,14 @@ int main() {
       // check if the physical address is too large
     }
 
+    // reset inserts
+    dc_stats->show = false;
+    L2_stats->show = false;
+
     switch (read_write) {
       case 'W':
         writes += 1;
+        cache_write(dc, address, true);
         break;
       case 'R':
         reads += 1;
@@ -102,7 +107,7 @@ int main() {
         goto cleanup;
     }
     printf("%08x %6x %4x %6x %3x %-4s %-4s %4x %6x %3x %-4s", address, pt_stats->vpage, pt_stats->offset, 0, 0, "N/A", pt_stats->hit ? "hit" : "miss", pt_stats->ppage, dc_stats->tag, dc_stats->index, dc_stats->hit ? "hit" : "miss");
-    if (dc_stats->access_next)
+    if (L2_stats->show)
       printf(" %6x %3x %4s\n", L2_stats->tag, L2_stats->index, L2_stats->hit ? "hit" : "miss");
     else
       fputc('\n', stdout);

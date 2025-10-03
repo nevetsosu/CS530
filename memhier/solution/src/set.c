@@ -85,8 +85,6 @@ SetNode* Set_get_lru(const Set* set) {
 
 // disconnects the node `node` from its current location in the list and puts it in the MRU position.
 void Set_set_mru(Set* set, SetNode* node) {
-  fprintf(stderr, "SENTINEL: %p\n", (void*) set->node_list);
-  fprintf(stderr, "Size: %lu\n", set->size);
   _Set_disconnect(node);
   _Set_insert_right(node, set->node_list);
 } 
