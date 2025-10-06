@@ -26,5 +26,6 @@ typedef struct Config {
 } Config;
 
 void print_config(const Config* config);
+void debug_config(const Config* config);
 void free_config(Config* config);
 Config* read_config(const char* filename);

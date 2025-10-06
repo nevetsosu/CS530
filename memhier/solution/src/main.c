@@ -4,6 +4,7 @@
 #include "config.h"
 #include "cache.h"
 #include "ptable.h"
+#include "tlb.h"
 
 #define LINESIZE 20
 
@@ -18,8 +19,8 @@ typedef struct RefStats RefStats;
 void print_cache_stats(const CacheStats* stats, const char* name) {
   size_t misses = stats->total_accesses - stats->hits;
   printf("%2s %-14s: %lu\n", name, "hits", stats->hits);
-  printf("%2s %-14s: %lu\n", name, "faults", misses);
-  printf("%2s %-14s: %lf\n", name, "pt hit ratio", (double) stats->hits / (double) stats->total_accesses);
+  printf("%2s %-14s: %lu\n", name, "misses", misses);
+  printf("%2s %-14s: %lf\n", name, "hit ratio", (double) stats->hits / (double) stats->total_accesses);
 }
 
 void print_rw_stats(const size_t reads, const size_t writes) {
@@ -40,16 +41,24 @@ void print_ref_stats(const RefStats* ref_stats) {
   printf("%-17s: %lu\n", "disk refs", ref_stats->disk_refs);
 }
 
+void print_tlb_stats(const TLBStats* tlb_stats) {
+  printf("%-17s: %lu\n", "dtlb hits", tlb_stats->hits);
+  printf("%-17s: %lu\n", "dtlb misses", tlb_stats->total_accesses - tlb_stats->hits);
+  printf("%-17s: %lf\n", "dtlb hit ratio", (double) tlb_stats->hits / (double) tlb_stats->total_accesses);
+}
+
 
 int main() {
   Config* config = read_config("../trace.config");
   if (!config) return 1;
 
-  // DEBUG
   print_config(config);
   
   // PAGE TABLE
   PTable* ptable = ptable_new(config->pt_num_vpages, config->pt_num_ppages, config->pt_page_size);
+
+  // TLB
+  TLB* tlb = TLB_new(ptable, config->tlb_num_sets, config->tlb_set_size, config->pt_page_size);
 
   // DC CACHE
   Cache* dc = cache_new(config->dc_num_sets, config->dc_set_size, config->dc_line_size, config->dc_write ? WRITE_THROUGH : WRITE_BACK, config->dc_write ? NO_WRALLOC : WRALLOC);
@@ -57,7 +66,6 @@ int main() {
     fprintf(stderr, "Failed to initialize dc\n");
     return 1;
   }
-  cache_decode_debug(dc, "DC");
   
   // L2 CACHE
   Cache* L2 = cache_new(config->L2_num_sets, config->L2_set_size, config->L2_line_size, config->L2_write ? WRITE_THROUGH : WRITE_BACK, config->L2_write ? NO_WRALLOC : WRALLOC);
@@ -65,7 +73,6 @@ int main() {
     fprintf(stderr, "Failed to initialize L2\n");
     return 1;
   }
-  cache_decode_debug(L2, "L2");
 
   // CONNECT CACHES
   cache_connect(dc, L2);
@@ -76,13 +83,11 @@ int main() {
   uint32_t address; 
   uint32_t paddress;
 
-  size_t reads = 0;
-  size_t writes = 0;
-  
   // STATS
   CacheStats* dc_stats = cache_stats(dc);
   CacheStats* L2_stats = cache_stats(L2);
   PTableStats* pt_stats = ptable_stats(ptable);
+  TLBStats* tlb_stats = TLB_stats(tlb);
 
   printf("Virtual  Virt.  Page TLB    TLB TLB  PT   Phys        DC  DC          L2  L2\n");
   printf("Address  Page # Off  Tag    Ind Res. Res. Pg # DC Tag Ind Res. L2 Tag Ind Res.\n");
@@ -102,13 +107,9 @@ int main() {
         continue;
       }
 
-      if (config->use_tlb) {
-        printf("TLB isn't ready yet\n");
-        paddress = ptable_virt_phys(ptable, address);
-        //! TODO address = tlb_translation
-      } else
-        paddress = ptable_virt_phys(ptable, address); 
-    } else {
+      paddress = config->use_tlb ? TLB_virt_phys(tlb, address) : ptable_virt_phys(ptable, address); 
+    }
+    else {
       // check if the physical address is too large
       if (address > config->pt_page_size * config->pt_num_ppages) {
         fprintf(stderr, "physical address too large\n");
@@ -120,25 +121,32 @@ int main() {
     // reset inserts
     dc_stats->show = false;
     L2_stats->show = false;
-
+  
+    // CACHE ACCESS
     switch (read_write) {
       case 'W':
-        writes += 1;
         cache_write(dc, paddress, true);
         break;
       case 'R':
-        reads += 1;
         cache_read(dc, paddress);
         break;
       default:
         printf("hierarchy: unexpected access type\n");
         goto cleanup;
     }
-    printf("%08x %6x %4x %6x %3x %-4s %-4s %4x %6x %3x %-4s", address, pt_stats->vpage, pt_stats->offset, 0, 0, "N/A", pt_stats->hit ? "hit" : "miss", pt_stats->ppage, dc_stats->tag, dc_stats->index, dc_stats->hit ? "hit" : "miss");
-    if (L2_stats->show)
-      printf(" %6x %3x %4s\n", L2_stats->tag, L2_stats->index, L2_stats->hit ? "hit" : "miss");
+
+    // PRINT
+    if (config->use_tlb) {
+      printf("%08x %6x %4x %6x %3x %-4s %-4s %4x %6x %3x %-5s", address, tlb_stats->vpage, tlb_stats->offset, tlb_stats->tag, tlb_stats->index, tlb_stats->hit ? "hit": "miss", tlb_stats->hit ? "    " : (pt_stats->hit ? "hit" : "miss"), tlb_stats->ppage, dc_stats->tag, dc_stats->index, dc_stats->hit ? "hit" : "miss");
+    } else {
+      printf("%08x %6x %4x                 %-4s %4x %6x %3x %-5s", address, pt_stats->vpage, pt_stats->offset, pt_stats->hit ? "hit" : "miss", pt_stats->ppage, dc_stats->tag, dc_stats->index, dc_stats->hit ? "hit" : "miss");
+    }
+
+
+    if (config->use_L2 && L2_stats->show)
+      printf("%6x %3x %-4s\n", L2_stats->tag, L2_stats->index, L2_stats->hit ? "hit" : "miss");
     else
-      fputc('\n', stdout);
+      printf("\n");
   }
 
   // Check Stats
@@ -151,16 +159,18 @@ int main() {
   ref_stats.pt_refs = pt_stats->total_accesses;
   ref_stats.disk_refs = pt_stats->disk_accesses;
   
-  printf("\nSimiulation Statistics\n\n");
+  printf("\nSimulation statistics\n\n");
 
   // PRINT EVERYTHING
+  print_tlb_stats(tlb_stats);
+  fputc('\n', stdout);
   print_pt_stats(pt_stats);
   fputc('\n', stdout);
   print_cache_stats(dc_stats, "dc");
   fputc('\n', stdout);
   print_cache_stats(L2_stats, "L2");
   fputc('\n', stdout);
-  print_rw_stats(reads, writes);
+  print_rw_stats(dc_stats->reads, dc_stats->total_accesses - dc_stats->reads);
   fputc('\n', stdout);
   print_ref_stats(&ref_stats);
 

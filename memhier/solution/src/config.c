@@ -3,8 +3,37 @@
 #include <string.h>
 #include "config.h"
 #include "config_consts.h"
+#include "util.h"
 
 void print_config(const Config* config) {
+  printf("Data TLB contains %lu sets.\n", config->tlb_num_sets);
+  printf("Each set contains %lu entries.\n", config->tlb_set_size);
+  printf("Number of bits used for the index is %lu.\n\n", log_2(config->tlb_num_sets));
+  
+  printf("Number of virtual pages is %lu.\n", config->pt_num_vpages);
+  printf("Number of physical pages is %lu.\n", config->pt_num_ppages);
+  printf("Each page contains %lu bytes.\n", config->pt_page_size);
+  printf("Number of bits used for the page table index is %lu.\n", log_2(config->pt_num_vpages));
+  printf("Number of bits used for the page offset is %lu.\n\n", log_2(config->pt_page_size));
+
+  printf("D-cache contains %lu sets.\n", config->dc_num_sets);
+  printf("Each set contains %lu entries.\n", config->dc_set_size);
+  printf("Each line is %lu bytes.\n", config->dc_line_size);
+  printf("The cache uses a %s policy.\n", config->dc_write ? "no write-allocate and write-through" : "write_allocate and write-back");
+  printf("Number of bits used for the index is %lu.\n", log_2(config->dc_num_sets));
+  printf("Number of bits used for the offset is %lu.\n\n", log_2(config->dc_line_size));
+
+  printf("L2-cache contains %lu sets.\n", config->L2_num_sets);
+  printf("Each set contains %lu entries.\n", config->L2_set_size);
+  printf("Each line is %lu bytes.\n", config->L2_line_size);
+  printf("The cache uses a %s policy.\n", config->L2_write ? "no write-allocate and write-through" : "write-allocate and write-back");
+  printf("Number of bits used for the index is %lu.\n", log_2(config->L2_num_sets));
+  printf("Number of bits used for the offset is %lu.\n\n", log_2(config->L2_line_size));
+
+  printf("The addresses read in are %s addresses.\n\n", config->virtual_addresses ? "virtual" : "physical");
+}
+
+void debug_config(const Config* config) {
   printf("Data TLB configuration\n");
   printf("\tNumber of sets: %lu\n", config->tlb_num_sets);
   printf("\tSet size: %lu\n\n", config->tlb_set_size);
@@ -325,7 +354,6 @@ Config* read_config(const char* filename) {
   free(buf);
 
   // CONSTRAINT VALIDATION
-  fprintf(stderr, "Checking constraint validations\n"); 
   if (!validate_config(config)) goto config_fail;
 
   return config;

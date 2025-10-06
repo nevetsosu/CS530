@@ -1,3 +1,4 @@
+#pragma once
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -29,6 +30,7 @@ struct CacheStats {
   AccessType type;
 
   size_t hits;
+  size_t reads;
   size_t mem_accesses;
   size_t total_accesses;
 };

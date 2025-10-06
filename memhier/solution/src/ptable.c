@@ -94,13 +94,13 @@ uint32_t _ptable_evict(PTable* ptable) {
 
 bool _ptable_get(PTable* ptable, uint32_t vpage, uint32_t* ppage) {
   TableEntry* v_entry = ptable->vpage_table + vpage;
+  bool hit = false;
 
     // hit, return entry
   if (v_entry->valid) {
+    hit = true;
     *ppage = v_entry->page;  
-    Set_set_mru(ptable->ppage_set, ptable->ppage_set->node_list + 1 + *ppage);
-
-    return true;
+    goto L_update_ptable;
   }
   
   ptable->stats->disk_accesses += 1;
@@ -108,29 +108,31 @@ bool _ptable_get(PTable* ptable, uint32_t vpage, uint32_t* ppage) {
   for (size_t i = 0; i < ptable->ppages; ptable->cur_ppage = (ptable->cur_ppage + 1) % ptable->ppages, i++) {
     TableEntry* p_entry = ptable->ppage_table + ptable->cur_ppage;
     if (p_entry->valid) continue;
-
-    _ptable_update(ptable, vpage, ptable->cur_ppage);
-    *ppage = ptable->cur_ppage; 
     
-    return false;
+    *ppage = ptable->cur_ppage; 
+    goto L_update_ptable;
   }
 
-  // evict a page
-  uint32_t new_ppage = *ppage = _ptable_evict(ptable);
-  _ptable_update(ptable, vpage, new_ppage); 
+  // evict and reassign a page
+  *ppage = _ptable_evict(ptable);
 
-  return false;
+L_update_ptable:
+
+  _ptable_update(ptable, vpage, *ppage); 
+  Set_set_mru(ptable->ppage_set, ptable->ppage_set->node_list + 1 + *ppage);
+
+  return hit;
 }
 
 PTableStats* ptable_stats(const PTable* ptable) {
   return ptable->stats;
 }
 
-uint32_t ptable_virt_phys(PTable* ptable, const uint32_t address) {
+uint32_t ptable_virt_phys(PTable* ptable, const uint32_t v_addr) {
   ptable->stats->total_accesses += 1;
-  ptable->stats->offset = address & ptable->page_offset_mask;
+  ptable->stats->offset = v_addr & ptable->page_offset_mask;
 
-  ptable->stats->vpage = address >> ptable->offset_bits;
+  ptable->stats->vpage = v_addr >> ptable->offset_bits;
   ptable->stats->hit = _ptable_get(ptable, ptable->stats->vpage, &ptable->stats->ppage);
   if (ptable->stats->hit)
     ptable->stats->hits += 1;

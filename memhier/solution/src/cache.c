@@ -297,6 +297,7 @@ void cache_read(Cache* cache, const uint32_t address) {
   cache->stats->total_accesses += 1;
   cache->stats->type = CACHE_READ;
   cache->stats->show = true;
+  cache->stats->reads += 1;
 }
 
 void _cache_writeback(Cache* cache, const uint32_t address, bool update_lru) {
