@@ -28,4 +28,4 @@ void ptable_connect_cache(PTable* ptable, Cache* cache);
 
 void ptable_free(PTable* ptable);
 PTableStats* ptable_stats(const PTable* ptable);
-uint32_t ptable_virt_phys(PTable* ptable, const uint32_t address);
+uint32_t ptable_virt_phys(PTable* ptable, const uint32_t address, bool write);

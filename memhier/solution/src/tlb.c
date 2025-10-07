@@ -98,7 +98,7 @@ void _TLB_decode(TLB* tlb, uint32_t v_addr, uint32_t* tag, uint32_t* index) {
   *index = (v_addr >> tlb->decode.index_pos) & tlb->decode.index_mask; 
 }
 
-bool _TLB_get(TLB* tlb, const uint32_t tag, const uint32_t index, uint32_t* ppage) {
+bool _TLB_get(TLB* tlb, const uint32_t tag, const uint32_t index, uint32_t* ppage, bool write) {
   Set* set = tlb->sets[index];
   TLBEntry* entry;
 
@@ -129,7 +129,7 @@ L_tlb_assign:
 
   uint32_t reconstructed_v_addr = (tag & tlb->decode.tag_mask) << tlb->decode.tag_pos;
   reconstructed_v_addr |= (index & tlb->decode.index_mask) << tlb->decode.index_pos;
-  *ppage = ptable_virt_phys(tlb->ptable, reconstructed_v_addr) >> tlb->decode.index_pos;
+  *ppage = ptable_virt_phys(tlb->ptable, reconstructed_v_addr, write) >> tlb->decode.index_pos;
 
   // cache entry
   entry->valid = true;
@@ -141,13 +141,13 @@ L_tlb_assign:
   return false;
 }
 
-uint32_t TLB_virt_phys(TLB* tlb, const uint32_t v_addr) {
+uint32_t TLB_virt_phys(TLB* tlb, const uint32_t v_addr, bool write) {
   tlb->stats->total_accesses += 1;
   tlb->stats->offset = v_addr & tlb->decode.offset_mask;
   tlb->stats->vpage = (v_addr >> tlb->decode.index_pos) & tlb->decode.tag_mask;
 
   _TLB_decode(tlb, v_addr, &tlb->stats->tag, &tlb->stats->index);
-  tlb->stats->hit = _TLB_get(tlb, tlb->stats->tag, tlb->stats->index, &tlb->stats->ppage);
+  tlb->stats->hit = _TLB_get(tlb, tlb->stats->tag, tlb->stats->index, &tlb->stats->ppage, write);
   if (tlb->stats->hit)
     tlb->stats->hits += 1;
   

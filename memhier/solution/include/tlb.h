@@ -25,5 +25,5 @@ struct TLBStats {
 TLB* TLB_new(PTable* ptable, const size_t num_sets, const size_t set_size, const size_t page_size);
 void TLB_free(TLB* tlb);
 TLBStats* TLB_stats(const TLB* tlb);
-uint32_t TLB_virt_phys(TLB* tlb, const uint32_t v_addr);
+uint32_t TLB_virt_phys(TLB* tlb, const uint32_t v_addr, bool write);
 void TLB_invalidate_ppage(TLB* tlb, const uint32_t ppage);

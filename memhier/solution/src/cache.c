@@ -162,7 +162,7 @@ bool _cache_find(const Cache* cache, const uint32_t tag, const uint32_t index, S
 }
 
 void _cache_writeback(Cache* cache, const uint32_t address, bool update_lru) {
-  fprintf(stderr, "write back at %u\n", address);
+  fprintf(stderr, "write back address %x\n", address);
   if (cache->next) {
     cache_write(cache->next, address, update_lru);
   } else {
@@ -186,6 +186,9 @@ static inline uint32_t _cache_address_from_tag_index(const Cache* cache, uint32_
 // address low and address high will have their index bits ignored
 // address_high is INclusive to avoid unsigned overflow
 void cache_invalidate_range(Cache* cache, uint32_t address_low, uint32_t address_high) {
+  address_low &= ~cache->decode.index_mask;
+  address_high &= ~cache->decode.index_mask;
+
   // propagate the invalidate message up
   if (cache->prev)
     cache_invalidate_range(cache->prev, address_low, address_high);
@@ -300,6 +303,8 @@ void cache_read(Cache* cache, const uint32_t address) {
   uint32_t tag, index;
   
   _cache_decode(cache, address, &tag, &index);
+
+  fprintf(stderr, "[%s]read at address %x\n", cache->stats->name, address);
   
   CacheEntry entry;
   entry.tag = tag;
@@ -326,6 +331,8 @@ void cache_write(Cache* cache, const uint32_t address, bool update_lru) {
   SetNode* node;
   
   _cache_decode(cache, address, &tag, &index);
+
+  fprintf(stderr, "[%s] write at address %x\n", cache->stats->name, address);
  
   cache->stats->total_accesses += 1;
   cache->stats->type = CACHE_WRITE;

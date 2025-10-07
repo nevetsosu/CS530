@@ -15,6 +15,7 @@ typedef struct PTableStats PTableStats;
 
 struct TableEntry {
   size_t page;
+  bool dirty;
   bool valid;
 };
 
@@ -90,7 +91,7 @@ void _ptable_update(PTable* ptable, uint32_t vpage, uint32_t ppage) {
 
   v_entry->page = ppage;
   p_entry->page = vpage;
-
+  
   Set_set_mru(ptable->ppage_set, ptable->ppage_set->node_list + 1 + ppage);
 }
 
@@ -102,13 +103,17 @@ uint32_t _ptable_evict(PTable* ptable) {
   fprintf(stderr, "[PTABLE] Evicting page: %u\n", ppage);
   if (!p_entry->valid)
     fprintf(stderr, "The evictor was called but LRU was already invalid?");
-   
+  
+  if (p_entry->dirty) {
+    ptable->stats->disk_accesses += 1;
+    fprintf(stderr, "[PTABLE] evicting dirty page\n");
+  }
   ptable->vpage_table[p_entry->page].valid = false;
 
   return ppage;
 } 
 
-bool _ptable_get(PTable* ptable, uint32_t vpage, uint32_t* ppage) {
+bool _ptable_get(PTable* ptable, uint32_t vpage, uint32_t* ppage, bool write) {
   TableEntry* v_entry = ptable->vpage_table + vpage;
   bool hit = false;
 
@@ -119,7 +124,9 @@ bool _ptable_get(PTable* ptable, uint32_t vpage, uint32_t* ppage) {
     goto L_update_ptable;
   }
   
+  // disk_access for page read
   ptable->stats->disk_accesses += 1;
+
   // search for free physical page
   for (size_t i = 0; i < ptable->ppages; ptable->cur_ppage = (ptable->cur_ppage + 1) % ptable->ppages, i++) {
     TableEntry* p_entry = ptable->ppage_table + ptable->cur_ppage;
@@ -130,7 +137,7 @@ bool _ptable_get(PTable* ptable, uint32_t vpage, uint32_t* ppage) {
   }
 
   // evict and reassign a page
-  *ppage = _ptable_evict(ptable);
+  *ppage = ptable->cur_ppage = _ptable_evict(ptable);
   if (ptable->tlb) TLB_invalidate_ppage(ptable->tlb, *ppage);
 
   uint32_t low_addr = *ppage * ptable->page_size;
@@ -138,9 +145,15 @@ bool _ptable_get(PTable* ptable, uint32_t vpage, uint32_t* ppage) {
 
 L_update_ptable:
 
+  if (write) {
+    fprintf(stderr, "[PTABLE] writing page\n");
+    ptable->ppage_table[*ppage].dirty = true;
+  }
+
   _ptable_update(ptable, vpage, *ppage); 
   Set_set_mru(ptable->ppage_set, ptable->ppage_set->node_list + 1 + *ppage);
 
+  fprintf(stderr, "[PTABLE] setting to new mru: %u\n", *ppage);
   return hit;
 }
 
@@ -148,12 +161,12 @@ PTableStats* ptable_stats(const PTable* ptable) {
   return ptable->stats;
 }
 
-uint32_t ptable_virt_phys(PTable* ptable, const uint32_t v_addr) {
+uint32_t ptable_virt_phys(PTable* ptable, const uint32_t v_addr, bool write) {
   ptable->stats->total_accesses += 1;
   ptable->stats->offset = v_addr & ptable->page_offset_mask;
 
   ptable->stats->vpage = v_addr >> ptable->offset_bits;
-  ptable->stats->hit = _ptable_get(ptable, ptable->stats->vpage, &ptable->stats->ppage);
+  ptable->stats->hit = _ptable_get(ptable, ptable->stats->vpage, &ptable->stats->ppage, write);
   if (ptable->stats->hit)
     ptable->stats->hits += 1;
   

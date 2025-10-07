@@ -119,7 +119,20 @@ int main() {
       fprintf(stderr, "failed to parse\n");
       continue;
     }
-    
+  
+    bool write;
+    switch (read_write) {
+      case 'W':
+        write = true;
+        break;
+      case 'R':
+        write = false;
+        break;
+      default:
+        printf("hierarchy: unexpected access type\n");
+        goto cleanup;
+    }
+
     // ADDRESS TRANSLATION
     if (config->virtual_addresses) {
       // check if the virtual address is too large
@@ -128,7 +141,7 @@ int main() {
         continue;
       }
 
-      paddress = config->use_tlb ? TLB_virt_phys(tlb, address) : ptable_virt_phys(ptable, address); 
+      paddress = config->use_tlb ? TLB_virt_phys(tlb, address, write) : ptable_virt_phys(ptable, address, write); 
     }
     else {
       // check if the physical address is too large
@@ -145,17 +158,10 @@ int main() {
       L2_stats->hit = false;
   
     // CACHE ACCESS
-    switch (read_write) {
-      case 'W':
-        cache_write(dc, paddress, true);
-        break;
-      case 'R':
-        cache_read(dc, paddress);
-        break;
-      default:
-        printf("hierarchy: unexpected access type\n");
-        goto cleanup;
-    }
+    if (write)
+      cache_write(dc, paddress, true);
+    else
+      cache_read(dc, paddress);
 
     // PRINT
     if (config->use_tlb) {
