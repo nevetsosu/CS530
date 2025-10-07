@@ -19,7 +19,7 @@ void print_config(const Config* config) {
   printf("D-cache contains %lu sets.\n", config->dc_num_sets);
   printf("Each set contains %lu entries.\n", config->dc_set_size);
   printf("Each line is %lu bytes.\n", config->dc_line_size);
-  printf("The cache uses a %s policy.\n", config->dc_write ? "no write-allocate and write-through" : "write_allocate and write-back");
+  printf("The cache uses a %s policy.\n", config->dc_write ? "no write-allocate and write-through" : "write-allocate and write-back");
   printf("Number of bits used for the index is %lu.\n", log_2(config->dc_num_sets));
   printf("Number of bits used for the offset is %lu.\n\n", log_2(config->dc_line_size));
 
@@ -30,7 +30,12 @@ void print_config(const Config* config) {
   printf("Number of bits used for the index is %lu.\n", log_2(config->L2_num_sets));
   printf("Number of bits used for the offset is %lu.\n\n", log_2(config->L2_line_size));
 
-  printf("The addresses read in are %s addresses.\n\n", config->virtual_addresses ? "virtual" : "physical");
+  printf("The addresses read in are %s addresses.\n", config->virtual_addresses ? "virtual" : "physical");
+
+  if (!config->use_L2)
+    printf("L2 cache is disabled in this configuration.\n");
+
+  fputc('\n', stdout);
 }
 
 void debug_config(const Config* config) {

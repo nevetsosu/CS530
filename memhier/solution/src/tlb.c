@@ -153,3 +153,18 @@ uint32_t TLB_virt_phys(TLB* tlb, const uint32_t v_addr) {
   uint32_t p_addr = (tlb->stats->ppage << tlb->decode.index_pos) | tlb->stats->offset;
   return p_addr; 
 }
+
+// Traverse the entire TLB and invalidate any page mapping to 'ppage'
+void TLB_invalidate_ppage(TLB* tlb, const uint32_t ppage) {
+  for (size_t i = 0; i < tlb->num_sets; i++) {
+    Set* set = tlb->sets[i];
+
+    SetNode* node;
+    SET_TRAVERSE_RIGHT(node, set->node_list) {
+      TLBEntry* entry = (TLBEntry*) node->data;
+      if (!entry->valid || entry->page != ppage) continue;
+      
+      entry->valid = false;
+    }
+  }
+}

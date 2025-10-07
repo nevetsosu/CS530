@@ -6,6 +6,7 @@
 #include "util.h"
 #include "ptable.h"
 #include "set.h"
+#include "tlb.h"
 
 typedef struct TableEntry TableEntry;
 typedef struct PTable PTable;
@@ -33,6 +34,8 @@ struct PTable {
   Set* ppage_set;
   TableEntry* ppage_table;
   size_t cur_ppage;
+
+  TLB* tlb;
 };
 
 PTable* ptable_new(const size_t vpages, const size_t ppages, const size_t page_size) { 
@@ -57,6 +60,10 @@ PTable* ptable_new(const size_t vpages, const size_t ppages, const size_t page_s
   ptable->ppage_table += 1;
 
   return ptable;
+}
+
+void ptable_connect_tlb(PTable* ptable, TLB* tlb) {
+  ptable->tlb = tlb;
 }
 
 void ptable_free(PTable* ptable) {
@@ -115,6 +122,7 @@ bool _ptable_get(PTable* ptable, uint32_t vpage, uint32_t* ppage) {
 
   // evict and reassign a page
   *ppage = _ptable_evict(ptable);
+  if (ptable->tlb) TLB_invalidate_ppage(ptable->tlb, *ppage);
 
 L_update_ptable:
 

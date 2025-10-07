@@ -161,32 +161,94 @@ bool _cache_find(const Cache* cache, const uint32_t tag, const uint32_t index, S
   return false;
 }
 
+void _cache_writeback(Cache* cache, const uint32_t address, bool update_lru) {
+  fprintf(stderr, "write back at %u\n", address);
+  if (cache->next) {
+    cache_write(cache->next, address, update_lru);
+  } else {
+    cache->stats->mem_accesses += 1;
+  }
+}
+
+void _cache_readback(Cache* cache, const uint32_t address) {
+  fprintf(stderr, "read back at addr %u\n", address);
+  if (cache->next)
+    cache_read(cache->next, address);
+  else
+    cache->stats->mem_accesses += 1;
+}
+
 static inline uint32_t _cache_address_from_tag_index(const Cache* cache, uint32_t tag, uint32_t index) {
   index = (index & cache->decode.index_mask) << cache->decode.index_pos;
   tag = (tag & cache->decode.tag_mask) << (cache->decode.tag_pos); 
   return tag | index; 
 }
 
+// address low and address high will have their index bits ignored
+// address_high is INclusive to avoid unsigned overflow
+void cache_invalidate_range(Cache* cache, uint32_t address_low, uint32_t address_high) {
+  address_low &= cache->decode.index_mask;
+  address_high &= cache->decode.index_mask;
+
+  // propagate the invalidate message up
+  if (cache->prev)
+    cache_invalidate_range(cache->prev, address_low, address_high);
+  
+  // handle invalidation in the current cache
+  for (uint32_t addr = address_low; addr <= address_high; addr += cache->line_size) {
+    uint32_t tag, index;
+    SetNode* cur;
+
+    _cache_decode(cache, addr, &tag, &index);
+    
+    // invalidate the entry if found in the set
+    Set* set = cache->sets[index];
+    SET_TRAVERSE_RIGHT(cur, set->node_list) {
+      CacheEntry* entry = (CacheEntry*) cur->data;
+      if (!entry->valid || entry->tag != tag) continue;
+      
+      // invalidate current entry
+      entry->valid = false;
+      
+      // We shouldn't need to check here if it's write through
+      // dirty bits should never be set in write through anyway
+      if (!entry->dirty)
+        continue;
+
+      // write_back to the previous
+      _cache_writeback(cache, addr, false);
+    }
+  }
+}
+
 // invalidates and evicts (if necessary) the LRU
 // handles writebacks from evictions and upward invalidate propagations
 // returns a node that have its cache entry replaced(BUT IS STILL IN THE LRU POSITION)
-SetNode* _cache_evict(const Cache* cache, const uint32_t index) {
+SetNode* _cache_evict(Cache* cache, const uint32_t index) {
+  fprintf(stderr, "evicting from set %u\n", index);
   Set* set = cache->sets[index];
   SetNode* node = Set_get_lru(set);
   CacheEntry* entry = (CacheEntry*) node->data;
 
   // don't need to invalidate and write back if non-valid
   if (!entry->valid) return node;
+  
+  // invalidate current entry
+  entry->valid = false;
+  
+  // invalidate 
+  uint32_t v_addr_low = (entry->tag & cache->decode.tag_mask) << cache->decode.tag_pos;
+  v_addr_low = (index & cache->decode.index_mask) << cache->decode.index_pos;
+  uint32_t v_addr_high = v_addr_low + cache->line_size - 1;
+  
+  // flush from current cache if dirty
+  if (entry->dirty)
+    _cache_writeback(cache, v_addr_low, false);
 
-  //! TODO
-  // flush and writeback
-    // send a flush signal up
-    // for all potential blocks
-      // this would require address reconstruction
-    
-  // write back to cache
-  // OR
-  // write back to memory
+  // start with the current cache (does a bit of repeatitive search)
+  if (cache->prev)
+    cache_invalidate_range(cache->prev, v_addr_low, v_addr_high);
+  
   return node;
 }
 
@@ -234,44 +296,6 @@ L_update_lru:
   return hit;
 }
 
-// address low and address high will have their index bits ignored
-void cache_invalidate_range(Cache* cache, uint32_t address_low, uint32_t address_high) {
-  address_low &= cache->decode.index_mask;
-  address_high &= cache->decode.index_mask;
-
-  // propagate the invalidate message up
-  if (cache->prev)
-    cache_invalidate_range(cache->prev, address_low, address_high);
-  
-  // handle invalidation in the current cache
-  for (uint32_t addr = address_low; addr < address_high; addr += cache->line_size) {
-    uint32_t tag, index;
-    SetNode* cur;
-
-    _cache_decode(cache, addr, &tag, &index);
-    
-    // invalidate the entry if found in the set
-    Set* set = cache->sets[index];
-    SET_TRAVERSE_RIGHT(cur, set->node_list) {
-      CacheEntry* entry = (CacheEntry*) cur->data;
-      if (entry->tag != tag) continue;
-      
-      // invalidate current entry
-      entry->valid = false;
-      
-      // Don't need to flush if WRITE_THROUGH
-      // Don't flush if not dirty.
-      if (cache->write_policy == WRITE_THROUGH || !entry->dirty)
-        continue;
-
-      // write_back to the previoups
-      if (cache->next)
-        cache_write(cache->next, addr, false);
-      else
-        cache->stats->mem_accesses += 1;
-    }
-  }
-}
 
 void cache_read(Cache* cache, const uint32_t address) {
   uint32_t tag, index;
@@ -286,11 +310,9 @@ void cache_read(Cache* cache, const uint32_t address) {
   cache->stats->hit = _cache_insert(cache, tag, index, &entry, true);
   if (cache->stats->hit) 
     cache->stats->hits += 1;
-  else if (cache->next)
-    cache_read(cache->next, address);
   else
-    cache->stats->mem_accesses += 1;
-
+    _cache_readback(cache, address);
+    
   cache->stats->address = address;
   cache->stats->tag = tag;
   cache->stats->index = index;
@@ -300,22 +322,17 @@ void cache_read(Cache* cache, const uint32_t address) {
   cache->stats->reads += 1;
 }
 
-void _cache_writeback(Cache* cache, const uint32_t address, bool update_lru) {
-  if (cache->next) {
-    cache_write(cache->next, address, update_lru);
-  } else {
-    cache->stats->mem_accesses += 1;
-  }
-}
-
 void cache_write(Cache* cache, const uint32_t address, bool update_lru) {
   uint32_t tag, index;
   SetNode* node;
   
+  _cache_decode(cache, address, &tag, &index);
+ 
   cache->stats->total_accesses += 1;
   cache->stats->type = CACHE_WRITE;
+  cache->stats->tag = tag;
+  cache->stats->index = index;
 
-  _cache_decode(cache, address, &tag, &index);
   Set* set = cache->sets[index];
 
   // hit
@@ -347,9 +364,10 @@ void cache_write(Cache* cache, const uint32_t address, bool update_lru) {
     CacheEntry entry;
     entry.tag = tag;
     entry.valid = true;
-    entry.dirty = false;
+    entry.dirty = true;
     
     // this sets MRU for us
-    _cache_insert(cache, tag, index, &entry, true); 
+    _cache_insert(cache, tag, index, &entry, true);
+    _cache_readback(cache, address);
   }
 }

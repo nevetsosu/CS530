@@ -17,10 +17,13 @@ struct RefStats {
 typedef struct RefStats RefStats;
 
 void print_cache_stats(const CacheStats* stats, const char* name) {
-  size_t misses = stats->total_accesses - stats->hits;
-  printf("%2s %-14s: %lu\n", name, "hits", stats->hits);
-  printf("%2s %-14s: %lu\n", name, "misses", misses);
-  printf("%2s %-14s: %lf\n", name, "hit ratio", (double) stats->hits / (double) stats->total_accesses);
+  printf("%2s %-14s: %lu\n", name, "hits", stats ? stats->hits : 0);
+  printf("%2s %-14s: %lu\n", name, "misses", stats ? (stats->total_accesses - stats->hits) : 0);
+
+  if (stats)
+    printf("%2s %-14s: %lf\n", name, "hit ratio", (double) stats->hits / (double) stats->total_accesses);
+  else
+    printf("%2s %-14s: %s\n", name, "hit ratio", "N/A");
 }
 
 void print_rw_stats(const size_t reads, const size_t writes) {
@@ -42,9 +45,14 @@ void print_ref_stats(const RefStats* ref_stats) {
 }
 
 void print_tlb_stats(const TLBStats* tlb_stats) {
-  printf("%-17s: %lu\n", "dtlb hits", tlb_stats->hits);
-  printf("%-17s: %lu\n", "dtlb misses", tlb_stats->total_accesses - tlb_stats->hits);
-  printf("%-17s: %lf\n", "dtlb hit ratio", (double) tlb_stats->hits / (double) tlb_stats->total_accesses);
+
+  printf("%-17s: %lu\n", "dtlb hits", tlb_stats ? tlb_stats->hits : 0);
+  printf("%-17s: %lu\n", "dtlb misses", tlb_stats ? (tlb_stats->total_accesses - tlb_stats->hits) : 0);
+  
+  if (tlb_stats)
+    printf("%-17s: %lf\n", "dtlb hit ratio", (double) tlb_stats->hits / (double) tlb_stats->total_accesses);
+  else
+    printf("%-17s: %s\n", "dtlb hit ratio" , "N/A");
 }
 
 
@@ -58,7 +66,7 @@ int main() {
   PTable* ptable = ptable_new(config->pt_num_vpages, config->pt_num_ppages, config->pt_page_size);
 
   // TLB
-  TLB* tlb = TLB_new(ptable, config->tlb_num_sets, config->tlb_set_size, config->pt_page_size);
+  TLB* tlb = config->use_tlb ? TLB_new(ptable, config->tlb_num_sets, config->tlb_set_size, config->pt_page_size) : NULL;
 
   // DC CACHE
   Cache* dc = cache_new(config->dc_num_sets, config->dc_set_size, config->dc_line_size, config->dc_write ? WRITE_THROUGH : WRITE_BACK, config->dc_write ? NO_WRALLOC : WRALLOC);
@@ -68,14 +76,19 @@ int main() {
   }
   
   // L2 CACHE
-  Cache* L2 = cache_new(config->L2_num_sets, config->L2_set_size, config->L2_line_size, config->L2_write ? WRITE_THROUGH : WRITE_BACK, config->L2_write ? NO_WRALLOC : WRALLOC);
-  if (!L2) {
-    fprintf(stderr, "Failed to initialize L2\n");
-    return 1;
+  Cache* L2 = NULL;
+  if (config->use_L2) {
+    L2 = cache_new(config->L2_num_sets, config->L2_set_size, config->L2_line_size, config->L2_write ? WRITE_THROUGH : WRITE_BACK, config->L2_write ? NO_WRALLOC : WRALLOC);
+    if (!L2) {
+      fprintf(stderr, "Failed to initialize L2\n");
+      return 1;
+    }
+
+    // CONNECT CACHES
+    cache_connect(dc, L2);
+
   }
 
-  // CONNECT CACHES
-  cache_connect(dc, L2);
   
   char* buf = malloc(LINESIZE);
   size_t size = LINESIZE;
@@ -85,9 +98,9 @@ int main() {
 
   // STATS
   CacheStats* dc_stats = cache_stats(dc);
-  CacheStats* L2_stats = cache_stats(L2);
+  CacheStats* L2_stats = config->use_L2 ? cache_stats(L2) : NULL;
   PTableStats* pt_stats = ptable_stats(ptable);
-  TLBStats* tlb_stats = TLB_stats(tlb);
+  TLBStats* tlb_stats = config->use_tlb ? TLB_stats(tlb) : NULL;
 
   printf("Virtual  Virt.  Page TLB    TLB TLB  PT   Phys        DC  DC          L2  L2\n");
   printf("Address  Page # Off  Tag    Ind Res. Res. Pg # DC Tag Ind Res. L2 Tag Ind Res.\n");
@@ -119,8 +132,9 @@ int main() {
     }
 
     // reset inserts
-    dc_stats->show = false;
-    L2_stats->show = false;
+    dc_stats->hit = false;
+    if (config->use_L2)
+      L2_stats->hit = false;
   
     // CACHE ACCESS
     switch (read_write) {
@@ -142,20 +156,14 @@ int main() {
       printf("%08x %6x %4x                 %-4s %4x %6x %3x %-5s", address, pt_stats->vpage, pt_stats->offset, pt_stats->hit ? "hit" : "miss", pt_stats->ppage, dc_stats->tag, dc_stats->index, dc_stats->hit ? "hit" : "miss");
     }
 
-
-    if (config->use_L2 && L2_stats->show)
+    if (config->use_L2 && (L2_stats->hit || !dc_stats->hit))
       printf("%6x %3x %-4s\n", L2_stats->tag, L2_stats->index, L2_stats->hit ? "hit" : "miss");
     else
       printf("\n");
   }
 
-  // Check Stats
-  if (dc_stats->mem_accesses > 0) {
-    fprintf(stderr, "[WARNING] DC cache has memory references??\n");
-  }
-
   RefStats ref_stats;
-  ref_stats.memory_refs = L2_stats->mem_accesses;
+  ref_stats.memory_refs = config->use_L2 ? L2_stats->mem_accesses : dc_stats->mem_accesses;
   ref_stats.pt_refs = pt_stats->total_accesses;
   ref_stats.disk_refs = pt_stats->disk_accesses;
   
@@ -183,5 +191,5 @@ int main() {
 cleanup:
   free_config(config);
   cache_free(dc);
-  cache_free(L2);
+  if (L2) cache_free(L2);
 }

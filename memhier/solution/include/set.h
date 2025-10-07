@@ -5,7 +5,7 @@
 //move this to header
 #define SET_TRAVERSE_RIGHT(cur, sentinel) for (cur = sentinel->next; cur != sentinel; cur = cur->next) 
 #define SET_TRAVERSE_LEFT(cur, sentinel) for (cur = sentinel->prev; cur != sentinel; cur = cur->prev)
-#define SET_TRAVERSE_FLAT(index, set) for (index = 0; index < set->size; index++)
+// #define SET_TRAVERSE_FLAT(index, set) for (index = 0; index < set->size; index++)
 
 // move this to header
 typedef struct SetNode SetNode;
