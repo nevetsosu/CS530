@@ -1,7 +1,0 @@
-[
-  {
-    "directory": "/home/sdao/code/CS530/memhier/solution",
-    "command": "gcc -Wall -Wextra -Wpedantic -ggdb -Iinclude",
-    "file": "src/main.c"
-  }
-]

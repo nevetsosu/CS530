@@ -62,7 +62,7 @@ void print_tlb_stats(const TLBStats* tlb_stats) {
 
 
 int main() {
-  Config* config = read_config("../trace.config");
+  Config* config = read_config("trace.config");
   if (!config) return 1;
 
   print_config(config);
