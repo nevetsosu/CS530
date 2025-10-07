@@ -162,7 +162,6 @@ bool _cache_find(const Cache* cache, const uint32_t tag, const uint32_t index, S
 }
 
 void _cache_writeback(Cache* cache, const uint32_t address, bool update_lru) {
-  fprintf(stderr, "write back address %x\n", address);
   if (cache->next) {
     cache_write(cache->next, address, update_lru);
   } else {
@@ -193,7 +192,6 @@ void cache_invalidate_range(Cache* cache, uint32_t address_low, uint32_t address
   if (cache->prev)
     cache_invalidate_range(cache->prev, address_low, address_high);
   
-  fprintf(stderr, "invalidating range: %x to %x in cache %s\n", address_low, address_high, cache->stats->name);
   // handle invalidation in the current cache
   for (uint32_t addr = address_low; addr <= address_high; addr += cache->line_size) {
     uint32_t tag, index;
@@ -228,8 +226,6 @@ SetNode* _cache_evict(Cache* cache, const uint32_t index) {
   Set* set = cache->sets[index];
   SetNode* node = Set_get_lru(set);
   CacheEntry* entry = (CacheEntry*) node->data;
-
-  fprintf(stderr, "[%s]evicting tag %u index %u\n", cache->stats->name, entry->tag, index);
 
   // don't need to invalidate and write back if non-valid
   if (!entry->valid) return node;
@@ -304,8 +300,6 @@ void cache_read(Cache* cache, const uint32_t address) {
   
   _cache_decode(cache, address, &tag, &index);
 
-  fprintf(stderr, "[%s]read at address %x\n", cache->stats->name, address);
-  
   CacheEntry entry;
   entry.tag = tag;
   entry.valid = true;
@@ -332,8 +326,6 @@ void cache_write(Cache* cache, const uint32_t address, bool update_lru) {
   
   _cache_decode(cache, address, &tag, &index);
 
-  fprintf(stderr, "[%s] write at address %x\n", cache->stats->name, address);
- 
   cache->stats->total_accesses += 1;
   cache->stats->type = CACHE_WRITE;
   cache->stats->tag = tag;

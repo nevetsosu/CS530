@@ -6,6 +6,7 @@
 #include "cache.h"
 #include "ptable.h"
 #include "tlb.h"
+#include "util.h"
 
 #define LINESIZE 20
 
@@ -34,9 +35,12 @@ void print_rw_stats(const size_t reads, const size_t writes) {
 }
 
 void print_pt_stats(const PTableStats* ptable) {
-  printf("%-17s: %lu\n", "pt hits", ptable->hits);
-  printf("%-17s: %lu\n", "pt faults", ptable->total_accesses - ptable->hits);
-  printf("%-17s: %lf\n", "pt hit ratio", (double) ptable->hits / (double) ptable->total_accesses); 
+  printf("%-17s: %lu\n", "pt hits", ptable ? ptable->hits : 0);
+  printf("%-17s: %lu\n", "pt faults", ptable ? (ptable->total_accesses - ptable->hits) : 0);
+  if (ptable)
+    printf("%-17s: %lf\n", "pt hit ratio", (double) ptable->hits / (double) ptable->total_accesses); 
+  else
+    printf("%-17s: %s\n", "pt hit ratio", "N/A");
 }
 
 void print_ref_stats(const RefStats* ref_stats) {
@@ -64,12 +68,13 @@ int main() {
   print_config(config);
   
   // PAGE TABLE
-  PTable* ptable = ptable_new(config->pt_num_vpages, config->pt_num_ppages, config->pt_page_size);
+  PTable* ptable = config->virtual_addresses ? ptable_new(config->pt_num_vpages, config->pt_num_ppages, config->pt_page_size) : NULL;
 
   // TLB
   TLB* tlb = config->use_tlb ? TLB_new(ptable, config->tlb_num_sets, config->tlb_set_size, config->pt_page_size) : NULL;
-
-  ptable_connect_tlb(ptable, tlb); 
+  
+  if (ptable && tlb)
+    ptable_connect_tlb(ptable, tlb); 
 
   // DC CACHE
   Cache* dc = cache_new(config->dc_num_sets, config->dc_set_size, config->dc_line_size, config->dc_write ? WRITE_THROUGH : WRITE_BACK, config->dc_write ? NO_WRALLOC : WRALLOC);
@@ -89,9 +94,9 @@ int main() {
 
     // CONNECT CACHES
     cache_connect(dc, L2);
-    ptable_connect_cache(ptable, L2);
+    if (ptable) ptable_connect_cache(ptable, L2);
   } else {
-    ptable_connect_cache(ptable, dc);
+    if (ptable) ptable_connect_cache(ptable, dc);
   }
 
   
@@ -104,13 +109,18 @@ int main() {
   // STATS
   CacheStats* dc_stats = cache_stats(dc);
   CacheStats* L2_stats = config->use_L2 ? cache_stats(L2) : NULL;
-  PTableStats* pt_stats = ptable_stats(ptable);
+  PTableStats* pt_stats = config->virtual_addresses ? ptable_stats(ptable) : NULL;
   TLBStats* tlb_stats = config->use_tlb ? TLB_stats(tlb) : NULL;
 
   strcpy(dc_stats->name, "dc");
-  strcpy(L2_stats->name, "L2");
+  if (L2) strcpy(L2_stats->name, "L2");
+  
+  size_t num_offset_bits = log_2(config->pt_page_size);
+  size_t num_page_bits = log_2(config->pt_num_ppages);
+  uint32_t offset_mask = ~((~0u) << num_offset_bits);
+  uint32_t page_mask = ~(~(0u) << num_page_bits);
 
-  printf("Virtual  Virt.  Page TLB    TLB TLB  PT   Phys        DC  DC          L2  L2\n");
+  printf("%-8s Virt.  Page TLB    TLB TLB  PT   Phys        DC  DC          L2  L2\n", config->virtual_addresses ? "Virtual" : "Physical");
   printf("Address  Page # Off  Tag    Ind Res. Res. Pg # DC Tag Ind Res. L2 Tag Ind Res.\n");
   printf("-------- ------ ---- ------ --- ---- ---- ---- ------ --- ---- ------ --- ----\n");
 
@@ -164,7 +174,9 @@ int main() {
       cache_read(dc, paddress);
 
     // PRINT
-    if (config->use_tlb) {
+    if (!config->virtual_addresses) {
+      printf("%08x        %4x                      %4x %6x %3x %-5s", paddress, paddress & offset_mask, (paddress >> num_offset_bits) & page_mask, dc_stats->tag, dc_stats->index, dc_stats->hit ? "hit" : "miss"); 
+    } else if (config->use_tlb) {
       printf("%08x %6x %4x %6x %3x %-4s %-4s %4x %6x %3x %-5s", address, tlb_stats->vpage, tlb_stats->offset, tlb_stats->tag, tlb_stats->index, tlb_stats->hit ? "hit": "miss", tlb_stats->hit ? "    " : (pt_stats->hit ? "hit" : "miss"), tlb_stats->ppage, dc_stats->tag, dc_stats->index, dc_stats->hit ? "hit" : "miss");
     } else {
       printf("%08x %6x %4x                 %-4s %4x %6x %3x %-5s", address, pt_stats->vpage, pt_stats->offset, pt_stats->hit ? "hit" : "miss", pt_stats->ppage, dc_stats->tag, dc_stats->index, dc_stats->hit ? "hit" : "miss");
@@ -178,8 +190,8 @@ int main() {
 
   RefStats ref_stats;
   ref_stats.memory_refs = config->use_L2 ? L2_stats->mem_accesses : dc_stats->mem_accesses;
-  ref_stats.pt_refs = pt_stats->total_accesses;
-  ref_stats.disk_refs = pt_stats->disk_accesses;
+  ref_stats.pt_refs = pt_stats ? pt_stats->total_accesses : 0;
+  ref_stats.disk_refs = pt_stats ? pt_stats->disk_accesses : 0;
   
   printf("\nSimulation statistics\n\n");
 

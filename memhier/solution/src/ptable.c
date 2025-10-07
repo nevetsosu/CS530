@@ -100,13 +100,11 @@ uint32_t _ptable_evict(PTable* ptable) {
   TableEntry* p_entry = (TableEntry*) lru->data;
   uint32_t ppage = p_entry - ptable->ppage_table;
   
-  fprintf(stderr, "[PTABLE] Evicting page: %u\n", ppage);
   if (!p_entry->valid)
     fprintf(stderr, "The evictor was called but LRU was already invalid?");
   
   if (p_entry->dirty) {
     ptable->stats->disk_accesses += 1;
-    fprintf(stderr, "[PTABLE] evicting dirty page\n");
   }
   ptable->vpage_table[p_entry->page].valid = false;
 
@@ -146,14 +144,12 @@ bool _ptable_get(PTable* ptable, uint32_t vpage, uint32_t* ppage, bool write) {
 L_update_ptable:
 
   if (write) {
-    fprintf(stderr, "[PTABLE] writing page\n");
     ptable->ppage_table[*ppage].dirty = true;
   }
 
   _ptable_update(ptable, vpage, *ppage); 
   Set_set_mru(ptable->ppage_set, ptable->ppage_set->node_list + 1 + *ppage);
 
-  fprintf(stderr, "[PTABLE] setting to new mru: %u\n", *ppage);
   return hit;
 }
 

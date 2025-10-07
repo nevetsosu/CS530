@@ -31,7 +31,8 @@ void print_config(const Config* config) {
   printf("Number of bits used for the offset is %lu.\n\n", log_2(config->L2_line_size));
 
   printf("The addresses read in are %s addresses.\n", config->virtual_addresses ? "virtual" : "physical");
-
+  if (!config->use_tlb)
+    printf("TLB is disabled in this configuration.\n");
   if (!config->use_L2)
     printf("L2 cache is disabled in this configuration.\n");
 
@@ -143,8 +144,14 @@ bool validate_config(const Config* config) {
     fprintf(stderr, "PAGE TABLE Number of physical pages should be power of 2.\n");
     return false;
   }
+  
+  if (config->use_tlb && !config->virtual_addresses) {
+    fprintf(stderr, "hierarchy: TLB cannot be enabled when virtual addresses are disabled\n");
+    return false;
+  }
 
-    return true;
+
+  return true;
 }
 
 Config* read_config(const char* filename) {
