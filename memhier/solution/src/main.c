@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include "config.h"
@@ -68,6 +69,8 @@ int main() {
   // TLB
   TLB* tlb = config->use_tlb ? TLB_new(ptable, config->tlb_num_sets, config->tlb_set_size, config->pt_page_size) : NULL;
 
+  ptable_connect_tlb(ptable, tlb); 
+
   // DC CACHE
   Cache* dc = cache_new(config->dc_num_sets, config->dc_set_size, config->dc_line_size, config->dc_write ? WRITE_THROUGH : WRITE_BACK, config->dc_write ? NO_WRALLOC : WRALLOC);
   if (!dc) {
@@ -86,7 +89,9 @@ int main() {
 
     // CONNECT CACHES
     cache_connect(dc, L2);
-
+    ptable_connect_cache(ptable, L2);
+  } else {
+    ptable_connect_cache(ptable, dc);
   }
 
   
@@ -101,6 +106,9 @@ int main() {
   CacheStats* L2_stats = config->use_L2 ? cache_stats(L2) : NULL;
   PTableStats* pt_stats = ptable_stats(ptable);
   TLBStats* tlb_stats = config->use_tlb ? TLB_stats(tlb) : NULL;
+
+  strcpy(dc_stats->name, "dc");
+  strcpy(L2_stats->name, "L2");
 
   printf("Virtual  Virt.  Page TLB    TLB TLB  PT   Phys        DC  DC          L2  L2\n");
   printf("Address  Page # Off  Tag    Ind Res. Res. Pg # DC Tag Ind Res. L2 Tag Ind Res.\n");

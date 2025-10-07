@@ -1,12 +1,13 @@
-#include "set.h"
-#include "tlb.h"
-#include "util.h"
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
 
 typedef struct TLBEntry TLBEntry;
 typedef struct DecodeConstants DecodeConstants;
+
+#include "set.h"
+#include "tlb.h"
+#include "util.h"
 
 struct DecodeConstants {
   size_t index_pos;

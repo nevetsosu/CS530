@@ -171,7 +171,6 @@ void _cache_writeback(Cache* cache, const uint32_t address, bool update_lru) {
 }
 
 void _cache_readback(Cache* cache, const uint32_t address) {
-  fprintf(stderr, "read back at addr %u\n", address);
   if (cache->next)
     cache_read(cache->next, address);
   else
@@ -187,13 +186,11 @@ static inline uint32_t _cache_address_from_tag_index(const Cache* cache, uint32_
 // address low and address high will have their index bits ignored
 // address_high is INclusive to avoid unsigned overflow
 void cache_invalidate_range(Cache* cache, uint32_t address_low, uint32_t address_high) {
-  address_low &= cache->decode.index_mask;
-  address_high &= cache->decode.index_mask;
-
   // propagate the invalidate message up
   if (cache->prev)
     cache_invalidate_range(cache->prev, address_low, address_high);
   
+  fprintf(stderr, "invalidating range: %x to %x in cache %s\n", address_low, address_high, cache->stats->name);
   // handle invalidation in the current cache
   for (uint32_t addr = address_low; addr <= address_high; addr += cache->line_size) {
     uint32_t tag, index;
@@ -225,10 +222,11 @@ void cache_invalidate_range(Cache* cache, uint32_t address_low, uint32_t address
 // handles writebacks from evictions and upward invalidate propagations
 // returns a node that have its cache entry replaced(BUT IS STILL IN THE LRU POSITION)
 SetNode* _cache_evict(Cache* cache, const uint32_t index) {
-  fprintf(stderr, "evicting from set %u\n", index);
   Set* set = cache->sets[index];
   SetNode* node = Set_get_lru(set);
   CacheEntry* entry = (CacheEntry*) node->data;
+
+  fprintf(stderr, "[%s]evicting tag %u index %u\n", cache->stats->name, entry->tag, index);
 
   // don't need to invalidate and write back if non-valid
   if (!entry->valid) return node;
@@ -236,19 +234,20 @@ SetNode* _cache_evict(Cache* cache, const uint32_t index) {
   // invalidate current entry
   entry->valid = false;
   
-  // invalidate 
+  // address range for upper invalidations 
   uint32_t v_addr_low = (entry->tag & cache->decode.tag_mask) << cache->decode.tag_pos;
-  v_addr_low = (index & cache->decode.index_mask) << cache->decode.index_pos;
+  v_addr_low |= (index & cache->decode.index_mask) << cache->decode.index_pos;
   uint32_t v_addr_high = v_addr_low + cache->line_size - 1;
   
+  // start with the current cache (does a bit of repeatitive search)
+  if (cache->prev)
+    cache_invalidate_range(cache->prev, v_addr_low, v_addr_high);
+
   // flush from current cache if dirty
   if (entry->dirty)
     _cache_writeback(cache, v_addr_low, false);
 
-  // start with the current cache (does a bit of repeatitive search)
-  if (cache->prev)
-    cache_invalidate_range(cache->prev, v_addr_low, v_addr_high);
-  
+   
   return node;
 }
 

@@ -2,10 +2,11 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include "ptable.h"
 
 typedef struct TLBStats TLBStats;
 typedef struct TLB TLB;
+
+#include "ptable.h"
 
 struct TLBStats {
   uint32_t address;

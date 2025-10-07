@@ -7,6 +7,7 @@
 #include "ptable.h"
 #include "set.h"
 #include "tlb.h"
+#include "cache.h"
 
 typedef struct TableEntry TableEntry;
 typedef struct PTable PTable;
@@ -36,6 +37,7 @@ struct PTable {
   size_t cur_ppage;
 
   TLB* tlb;
+  Cache* cache;
 };
 
 PTable* ptable_new(const size_t vpages, const size_t ppages, const size_t page_size) { 
@@ -62,8 +64,14 @@ PTable* ptable_new(const size_t vpages, const size_t ppages, const size_t page_s
   return ptable;
 }
 
+// connects tlb for invalidation when a page is evicted
 void ptable_connect_tlb(PTable* ptable, TLB* tlb) {
   ptable->tlb = tlb;
+}
+
+// connects cache for invalidation when a page is evicted
+void ptable_connect_cache(PTable* ptable, Cache* cache) {
+  ptable->cache = cache;
 }
 
 void ptable_free(PTable* ptable) {
@@ -91,6 +99,7 @@ uint32_t _ptable_evict(PTable* ptable) {
   TableEntry* p_entry = (TableEntry*) lru->data;
   uint32_t ppage = p_entry - ptable->ppage_table;
   
+  fprintf(stderr, "[PTABLE] Evicting page: %u\n", ppage);
   if (!p_entry->valid)
     fprintf(stderr, "The evictor was called but LRU was already invalid?");
    
@@ -123,6 +132,9 @@ bool _ptable_get(PTable* ptable, uint32_t vpage, uint32_t* ppage) {
   // evict and reassign a page
   *ppage = _ptable_evict(ptable);
   if (ptable->tlb) TLB_invalidate_ppage(ptable->tlb, *ppage);
+
+  uint32_t low_addr = *ppage * ptable->page_size;
+  if (ptable->cache) cache_invalidate_range(ptable->cache, low_addr, low_addr + ptable->page_size - 1);
 
 L_update_ptable:
 

@@ -33,6 +33,7 @@ struct CacheStats {
   size_t reads;
   size_t mem_accesses;
   size_t total_accesses;
+  char name[10];
 };
 
 typedef struct Cache Cache;
@@ -49,4 +50,6 @@ void cache_connect(Cache* prev, Cache* next);
 
 void cache_decode_debug(const Cache* cache, const char* cache_name);
 CacheStats* cache_stats(const Cache* cache);
+
+void cache_invalidate_range(Cache* cache, const uint32_t low_addr, const uint32_t high_addr);
 
