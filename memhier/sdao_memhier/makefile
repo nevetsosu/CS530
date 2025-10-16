@@ -12,9 +12,11 @@ all: build
 $(TARGET): $(SRCS)
 	$(CC) $(CFLAGS) -I$(INC_DIR) -o $@ $^
 
+# For submission
 run: $(TARGET)
 	./$< < test.dat
 
+# For submission
 build: $(TARGET)
 
 test: $(TARGET)
