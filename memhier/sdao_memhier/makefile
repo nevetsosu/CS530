@@ -7,10 +7,15 @@ TARGET = memhier
 
 SRCS = $(wildcard $(SRC_DIR)/*.c)
 
-all: $(TARGET)
+all: build
 
 $(TARGET): $(SRCS)
 	$(CC) $(CFLAGS) -I$(INC_DIR) -o $@ $^
+
+run: $(TARGET)
+	./$< < test.dat
+
+build: $(TARGET)
 
 test: $(TARGET)
 	./$(TARGET)
