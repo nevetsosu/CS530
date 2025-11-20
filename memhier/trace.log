@@ -1,0 +1,143 @@
+read at 00000000
+
+write at 00000008
+
+read at 00000010
+
+write at 00000018
+
+read at 00000020
+
+write at 00000028
+writing back DC line with tag 0 and index 1 to memory
+
+read at 00000030
+
+write at 00000038
+writing back DC line with tag 1 and index 1 to memory
+
+read at 00000040
+
+write at 00000048
+writing back DC line with tag 2 and index 1 to memory
+
+read at 00000080
+
+write at 00000088
+writing back DC line with tag 3 and index 1 to memory
+
+read at 00000090
+
+write at 00000098
+writing back DC line with tag 4 and index 1 to memory
+
+read at 000000a0
+
+write at 000000a8
+writing back DC line with tag 8 and index 1 to memory
+
+read at 000000b0
+
+write at 000000b8
+writing back DC line with tag 9 and index 1 to memory
+
+read at 00000100
+
+write at 00000108
+writing back DC line with tag a and index 1 to memory
+
+read at 00000110
+
+write at 00000118
+writing back DC line with tag b and index 1 to memory
+
+read at 00000120
+
+write at 00000128
+writing back DC line with tag 10 and index 1 to memory
+
+read at 00000130
+
+write at 00000138
+writing back DC line with tag 11 and index 1 to memory
+
+read at 00000140
+
+write at 00000148
+writing back DC line with tag 12 and index 1 to memory
+
+read at 00000180
+
+write at 00000188
+writing back DC line with tag 13 and index 1 to memory
+
+read at 00000190
+
+write at 00000198
+writing back DC line with tag 14 and index 1 to memory
+
+read at 000001a0
+
+write at 000001a8
+writing back DC line with tag 18 and index 1 to memory
+
+read at 000001b0
+
+write at 000001b8
+writing back DC line with tag 19 and index 1 to memory
+
+read at 00000200
+
+write at 00000208
+writing back DC line with tag 1a and index 1 to memory
+
+read at 00000210
+
+write at 00000218
+writing back DC line with tag 1b and index 1 to memory
+
+read at 00000220
+
+write at 00000228
+writing back DC line with tag 20 and index 1 to memory
+
+read at 00000230
+
+write at 00000238
+writing back DC line with tag 21 and index 1 to memory
+
+read at 00000280
+
+write at 00000288
+writing back DC line with tag 22 and index 1 to memory
+
+read at 00000290
+
+write at 00000298
+writing back DC line with tag 23 and index 1 to memory
+
+read at 000002a0
+
+write at 000002a8
+writing back DC line with tag 28 and index 1 to memory
+
+read at 000002b0
+
+write at 000002b8
+writing back DC line with tag 29 and index 1 to memory
+
+read at 00000300
+
+write at 00000308
+writing back DC line with tag 2a and index 1 to memory
+
+read at 00000310
+
+write at 00000318
+writing back DC line with tag 2b and index 1 to memory
+
+read at 00000320
+
+write at 00000328
+writing back DC line with tag 30 and index 1 to memory
+

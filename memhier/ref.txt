@@ -1,0 +1,115 @@
+Data TLB contains 2 sets.
+Each set contains 1 entries.
+Number of bits used for the index is 1.
+
+Number of virtual pages is 64.
+Number of physical pages is 4.
+Each page contains 256 bytes.
+Number of bits used for the page table index is 6.
+Number of bits used for the page offset is 8.
+
+D-cache contains 2 sets.
+Each set contains 2 entries.
+Each line is 8 bytes.
+The cache uses a write-allocate and write-back policy.
+Number of bits used for the index is 1.
+Number of bits used for the offset is 3.
+
+L2-cache contains 16 sets.
+Each set contains 4 entries.
+Each line is 32 bytes.
+The cache uses a write-allocate and write-back policy.
+Number of bits used for the index is 4.
+Number of bits used for the offset is 5.
+
+The addresses read in are physical addresses.
+TLB is disabled in this configuration.
+L2 cache is disabled in this configuration.
+
+Physical Virt.  Page TLB    TLB TLB  PT   Phys        DC  DC          L2  L2
+Address  Page # Off  Tag    Ind Res. Res. Pg # DC Tag Ind Res. L2 Tag Ind Res.
+-------- ------ ---- ------ --- ---- ---- ---- ------ --- ---- ------ --- ----
+00000000           0                         0      0   0 miss 
+00000008           8                         0      0   1 miss 
+00000010          10                         0      1   0 miss 
+00000018          18                         0      1   1 miss 
+00000020          20                         0      2   0 miss 
+00000028          28                         0      2   1 miss 
+00000030          30                         0      3   0 miss 
+00000038          38                         0      3   1 miss 
+00000040          40                         0      4   0 miss 
+00000048          48                         0      4   1 miss 
+00000080          80                         0      8   0 miss 
+00000088          88                         0      8   1 miss 
+00000090          90                         0      9   0 miss 
+00000098          98                         0      9   1 miss 
+000000a0          a0                         0      a   0 miss 
+000000a8          a8                         0      a   1 miss 
+000000b0          b0                         0      b   0 miss 
+000000b8          b8                         0      b   1 miss 
+00000100           0                         1     10   0 miss 
+00000108           8                         1     10   1 miss 
+00000110          10                         1     11   0 miss 
+00000118          18                         1     11   1 miss 
+00000120          20                         1     12   0 miss 
+00000128          28                         1     12   1 miss 
+00000130          30                         1     13   0 miss 
+00000138          38                         1     13   1 miss 
+00000140          40                         1     14   0 miss 
+00000148          48                         1     14   1 miss 
+00000180          80                         1     18   0 miss 
+00000188          88                         1     18   1 miss 
+00000190          90                         1     19   0 miss 
+00000198          98                         1     19   1 miss 
+000001a0          a0                         1     1a   0 miss 
+000001a8          a8                         1     1a   1 miss 
+000001b0          b0                         1     1b   0 miss 
+000001b8          b8                         1     1b   1 miss 
+00000200           0                         2     20   0 miss 
+00000208           8                         2     20   1 miss 
+00000210          10                         2     21   0 miss 
+00000218          18                         2     21   1 miss 
+00000220          20                         2     22   0 miss 
+00000228          28                         2     22   1 miss 
+00000230          30                         2     23   0 miss 
+00000238          38                         2     23   1 miss 
+00000280          80                         2     28   0 miss 
+00000288          88                         2     28   1 miss 
+00000290          90                         2     29   0 miss 
+00000298          98                         2     29   1 miss 
+000002a0          a0                         2     2a   0 miss 
+000002a8          a8                         2     2a   1 miss 
+000002b0          b0                         2     2b   0 miss 
+000002b8          b8                         2     2b   1 miss 
+00000300           0                         3     30   0 miss 
+00000308           8                         3     30   1 miss 
+00000310          10                         3     31   0 miss 
+00000318          18                         3     31   1 miss 
+00000320          20                         3     32   0 miss 
+00000328          28                         3     32   1 miss 
+
+Simulation statistics
+
+dtlb hits        : 0
+dtlb misses      : 0
+dtlb hit ratio   : N/A
+
+pt hits          : 0
+pt faults        : 0
+pt hit ratio     : N/A
+
+dc hits          : 0
+dc misses        : 58
+dc hit ratio     : 0.000000
+
+L2 hits          : 0
+L2 misses        : 0
+L2 hit ratio     : N/A
+
+Total reads      : 29
+Total writes     : 29
+Ratio of reads   : 0.500000
+
+main memory refs : 85
+page table refs  : 0
+disk refs        : 0
