@@ -2,3 +2,4 @@ compile_commands.json
 tomasulo
 config.txt
 trace*
+.cache/
