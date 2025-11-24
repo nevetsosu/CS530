@@ -1,4 +1,4 @@
-#include "rstation.h"
+#include "rs.h"
 #include <stdlib.h>
 
 void rs_free(RStation* rs) {

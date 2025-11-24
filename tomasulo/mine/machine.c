@@ -2,10 +2,13 @@
 #include <stdlib.h>
 #include "machine.h" 
 #include "instr.h"
-#include "rstation.h"
+#include "rs.h"
 #include "rb.h"
+#include "bitvec.h"
 
 #define N_OPS 7
+
+#define COMMIT_INIT_CAPACITY 2
 
 typedef struct State State;
 struct State {
@@ -13,8 +16,27 @@ struct State {
   size_t latencies[N_OPS];
 
   RingBuffer* reorder;
+  BitVector* bv;
   StateStats stats;
 };
+
+static const enum op_t unique_stations[] = { STORE, ADD, FMUL, FADD, BRANCH };
+
+void machine_free(State* state) { 
+  for (size_t i = 0; i < sizeof(unique_stations) / sizeof(*unique_stations); i++) {
+    rs_free(state->stations[unique_stations[i]]);
+  }
+/*
+  rs_free(state->stations[STORE]);
+  rs_free(state->stations[ADD]);
+  rs_free(state->stations[FMUL]);
+  rs_free(state->stations[FADD]);
+  rs_free(state->stations[BRANCH]);
+*/
+  rb_free(state->reorder);
+  bv_free(state->bv);
+  free(state);
+}
 
 State* machine_init(const Config* config) {
   State* state = malloc(sizeof(*state));
@@ -25,8 +47,9 @@ State* machine_init(const Config* config) {
   if (!state->stations[STORE]) goto machine_init_fail;
   state->latencies[STORE] = 1;
 
-  // add and sub
-  state->stations[ADD] = state->stations[SUB] = rs_new(config->fp_adds_buf);
+  // add and sub // for some reason this one can't be a single line assignment
+  state->stations[SUB] = rs_new(config->fp_adds_buf);
+  state->stations[ADD] = state->stations[SUB];
   if (!state->stations[ADD]) goto machine_init_fail;
   state->latencies[ADD] = 1;
 
@@ -51,6 +74,9 @@ State* machine_init(const Config* config) {
   state->reorder = rb_new(config->reorder_buf);
   if (!state->reorder) goto machine_init_fail;
 
+  // commit bitset
+  state->bv = bv_new(COMMIT_INIT_CAPACITY);
+
   return state;
 
 machine_init_fail:
@@ -60,6 +86,8 @@ machine_init_fail:
   if (state->stations[FADD])   rs_free(state->stations[FADD]);
   if (state->stations[BRANCH]) rs_free(state->stations[BRANCH]); 
   if (state->reorder)          rb_free(state->reorder);
+  if (state->bv)               bv_free(state->bv);
+  if (state)                   free(state);
   return NULL;
 } 
 
@@ -109,7 +137,8 @@ void machine_schedule(State* state, Instr* instr) {
   rs_push(station, stats->execute_end);
 
   // depends purely on CDB availability
-  stats->cdb_write = stats->execute_end + 1;
+  size_t projected_cdb_write = stats->execute_end + 1;
+  stats->cdb_write = bv_insert(state->bv, projected_cdb_write);
   
   // depends on commit availability
   size_t next_avail_commit = instr->prev->stats.commit + 1;

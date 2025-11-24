@@ -14,6 +14,7 @@ struct StateStats {
   size_t true_dependence_delays;
 };
 
+void machine_free(State* state);
 State* machine_init(const Config* config);
 void machine_schedule(State* state, Instr* instr);
 StateStats* machine_stats(State* state);

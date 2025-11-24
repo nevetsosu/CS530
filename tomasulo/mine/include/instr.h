@@ -45,6 +45,7 @@ struct Instr {
 Instr* instr_new(void);
 void   instr_free(Instr* instr);
 Instr* instr_parse(const char* instr_str);
+Instr* instr_sentinel(void);
 
 //
 // DEBUG
@@ -53,4 +54,3 @@ Instr* instr_parse(const char* instr_str);
 // prints debug information about 'instr'
 // if stats is non-zero, will also print stat information
 void instr_print(const Instr* instr, int stats);
-Instr* instr_sentinel(void);

@@ -33,8 +33,7 @@ int main(int argc, char** argv) {
   size_t size = 0;
   ssize_t len = 0;
 
-  Instr* sentinel = instr_sentinel();
-  Instr* cur = sentinel;
+  Instr* cur = instr_sentinel();
   while ((len = getline(&line, &size, stdin)) > 0) {
     line[len - 1] = '\0';
     cur->next = instr_parse(line);
@@ -52,10 +51,28 @@ int main(int argc, char** argv) {
   printf("     Instruction      Issues Executes  Read  Result Commits\n");
   printf("--------------------- ------ -------- ------ ------ -------\n");
   
-  cur = sentinel->next;
+  cur = instr_sentinel()->next;
   while (cur != NULL) {
     InstrStats* stats = &cur->stats;
-    printf("%-21s %6lu %3lu -%3lu %6lu %6lu %7lu\n", cur->str, stats->issue, stats->execute_start, stats->execute_end, stats->mem_read, stats->cdb_write, stats->commit);
+    
+    // this portion is always printed
+    printf("%-21s %6lu %3lu -%3lu ", cur->str, stats->issue, stats->execute_start, stats->execute_end);
+    
+    // if print mem read
+    if (stats->mem_read)
+      printf("%6lu ", stats->cdb_write);
+    else
+      printf("       ");
+
+    // if print cdb write
+    if (stats->cdb_write)
+      printf("%6lu ", stats->cdb_write);
+    else
+      printf("       ");
+
+    // print commits
+    printf("%7lu\n", stats->commit);
+
     cur = cur->next;
   }
   
@@ -66,16 +83,14 @@ int main(int argc, char** argv) {
   printf("data memory conflict delays: %lu\n", stats->data_memory_conflict_delays);
   printf("true dependence delays: %lu\n", stats->true_dependence_delays);
 
-  // IGNORE CLEANING FOR NOW
-  return 0;
-
-  // CLEAN
-  cur = sentinel;
-  while (cur != NULL) {
+    // CLEAN
+  cur = instr_sentinel()->next;
+  while (cur) {
     Instr* next = cur->next;
     instr_free(cur);
     cur = next;
   }
 
   config_free(config);
+  machine_free(state);
 }
