@@ -6,9 +6,9 @@
 #include "rb.h"
 #include "bitvec.h"
 
-#define N_OPS 7
+#define N_OPS 9
 
-#define COMMIT_INIT_CAPACITY 2
+#define BV_INIT_CAPACITY 2
 
 typedef struct State State;
 struct State {
@@ -16,7 +16,8 @@ struct State {
   size_t latencies[N_OPS];
 
   RingBuffer* reorder;
-  BitVector* bv;
+  BitVector* mem_bv;
+  BitVector* commit_bv;
   StateStats stats;
 };
 
@@ -26,15 +27,10 @@ void machine_free(State* state) {
   for (size_t i = 0; i < sizeof(unique_stations) / sizeof(*unique_stations); i++) {
     rs_free(state->stations[unique_stations[i]]);
   }
-/*
-  rs_free(state->stations[STORE]);
-  rs_free(state->stations[ADD]);
-  rs_free(state->stations[FMUL]);
-  rs_free(state->stations[FADD]);
-  rs_free(state->stations[BRANCH]);
-*/
+
   rb_free(state->reorder);
-  bv_free(state->bv);
+  bv_free(state->commit_bv);
+  bv_free(state->mem_bv);
   free(state);
 }
 
@@ -43,15 +39,16 @@ State* machine_init(const Config* config) {
   if (!state) return NULL;
 
   // store and load
-  state->stations[STORE] = rs_new(config->eff_addr_buf);
+  state->stations[STORE] = state->stations[LOAD] = rs_new(config->eff_addr_buf);
   if (!state->stations[STORE]) goto machine_init_fail;
-  state->latencies[STORE] = 1;
+  state->latencies[STORE] = state->latencies[LOAD] = 1;
 
   // add and sub // for some reason this one can't be a single line assignment
   state->stations[SUB] = rs_new(config->fp_adds_buf);
   state->stations[ADD] = state->stations[SUB];
   if (!state->stations[ADD]) goto machine_init_fail;
-  state->latencies[ADD] = 1;
+  state->latencies[ADD] = state->latencies[SUB] = 1;
+  
 
   // fmul and div
   state->stations[FMUL] = state->stations[FDIV] = rs_new(config->fp_muls_buf);
@@ -75,18 +72,19 @@ State* machine_init(const Config* config) {
   if (!state->reorder) goto machine_init_fail;
 
   // commit bitset
-  state->bv = bv_new(COMMIT_INIT_CAPACITY);
+  state->commit_bv = bv_new(BV_INIT_CAPACITY);
+
+  // mem bitset
+  state->mem_bv = bv_new(BV_INIT_CAPACITY);
 
   return state;
 
 machine_init_fail:
-  if (state->stations[STORE])  rs_free(state->stations[STORE]);
-  if (state->stations[ADD])    rs_free(state->stations[ADD]);
-  if (state->stations[FMUL])   rs_free(state->stations[FMUL]);
-  if (state->stations[FADD])   rs_free(state->stations[FADD]);
-  if (state->stations[BRANCH]) rs_free(state->stations[BRANCH]); 
+  for (size_t i = 0; i < sizeof(unique_stations) / sizeof(*unique_stations); i++) {
+    if (state->stations[unique_stations[i]]) rs_free(state->stations[unique_stations[i]]);
+  }
   if (state->reorder)          rb_free(state->reorder);
-  if (state->bv)               bv_free(state->bv);
+  if (state->commit_bv)        bv_free(state->commit_bv);
   if (state)                   free(state);
   return NULL;
 } 
@@ -94,6 +92,8 @@ machine_init_fail:
 void machine_schedule(State* state, Instr* instr) {
   InstrStats* stats = &instr->stats;
   RStation* station = state->stations[instr->op_type];
+
+  fprintf(stderr, "instruction: %s\n", instr->str);
 
   // Projected issue is just 1 after the previous issue
   size_t projected_issue = instr->prev->stats.issue + 1;
@@ -136,10 +136,27 @@ void machine_schedule(State* state, Instr* instr) {
   stats->execute_end = stats->execute_start - 1 + state->latencies[instr->op_type];
   rs_push(station, stats->execute_end);
 
-  // depends purely on CDB availability
-  size_t projected_cdb_write = stats->execute_end + 1;
-  stats->cdb_write = bv_insert(state->bv, projected_cdb_write);
-  
+  // memory depends on instruction and mem availability
+  switch (instr->op_type) {
+    case LOAD:
+      stats->mem_read = bv_insert(state->mem_bv, stats->execute_end + 1);
+      break;
+    default:
+      stats->mem_read = 0;
+      break;
+  }
+
+  // depends instruction type AND CDB availability
+  switch (instr->op_type) {
+    case STORE:
+      /* FALLTHROUGH */
+    case BRANCH:
+      stats->cdb_write = 0;
+      break;
+    default:
+    stats->cdb_write = bv_insert(state->commit_bv, (stats->mem_read ? stats->mem_read : stats->execute_end) + 1); 
+    break;
+  }
   // depends on commit availability
   size_t next_avail_commit = instr->prev->stats.commit + 1;
   size_t projected_commit = stats->cdb_write + 1;

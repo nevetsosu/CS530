@@ -60,7 +60,7 @@ int main(int argc, char** argv) {
     
     // if print mem read
     if (stats->mem_read)
-      printf("%6lu ", stats->cdb_write);
+      printf("%6lu ", stats->mem_read);
     else
       printf("       ");
 

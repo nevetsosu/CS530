@@ -19,11 +19,11 @@ struct InstrStats {
 };
 
 enum op_t {
-  STORE = 0, LOAD = 0,
-  ADD = 1, SUB = 1,
-  FMUL = 2, FDIV = 3,
-  FADD = 4, FSUB = 5,
-  BRANCH = 6
+  STORE = 0, LOAD = 1,
+  ADD = 2, SUB = 3,
+  FMUL = 4, FDIV = 5,
+  FADD = 6, FSUB = 7,
+  BRANCH = 8
 };
 
 struct Instr {
