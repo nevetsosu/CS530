@@ -5,6 +5,7 @@
 #include "rs.h"
 #include "rb.h"
 #include "bitvec.h"
+#include "config.h"
 
 #define N_OPS 9
 
@@ -19,9 +20,54 @@ struct State {
   BitVector* mem_bv;
   BitVector* commit_bv;
   StateStats stats;
+  const Config* config;
 };
 
 static const enum op_t unique_stations[] = { STORE, ADD, FMUL, FADD, BRANCH };
+
+// returns the dependent cycle
+// stores and loads use this for the effective address register dependence
+static size_t _machine_find_data_dependency(State* state, Instr* instr, size_t operand) {
+  Instr* cur = instr->prev;
+  size_t i = 0;
+
+  while (i < state->config->reorder_buf && cur != instr_sentinel()) {
+    if (cur->op1 != operand || cur->fp != instr->fp) goto _machine_find_data_dependency_next;
+    
+    fprintf(stderr, "found depedendent instruction: %s\n", cur->str);
+    size_t dependent_cycle;
+    switch (cur->op_type) {
+      case STORE:
+        dependent_cycle = cur->stats.commit;
+        break;
+      default:
+        dependent_cycle = cur->stats.cdb_write;
+        break;
+    }
+
+    return dependent_cycle;
+
+_machine_find_data_dependency_next:
+    i += 1;
+    cur = cur->prev;
+  }
+
+  return 0;
+}
+
+// non-stores and non-loads use this
+static size_t _machine_find_data_dependencies(State* state, Instr* instr) {
+  size_t dependencies[2] = { 0 };
+  if (instr->op2 != (unsigned int) -1)
+    dependencies[0] = _machine_find_data_dependency(state, instr, instr->op2);
+  if (instr->op3 != (unsigned int) -1)
+    dependencies[1] = _machine_find_data_dependency(state, instr, instr->op3);
+
+  if (dependencies[0] > dependencies[1])
+    return dependencies[0];
+  else
+    return dependencies[1];
+} 
 
 void machine_free(State* state) { 
   for (size_t i = 0; i < sizeof(unique_stations) / sizeof(*unique_stations); i++) {
@@ -76,6 +122,8 @@ State* machine_init(const Config* config) {
 
   // mem bitset
   state->mem_bv = bv_new(BV_INIT_CAPACITY);
+
+  state->config = config;
 
   return state;
 
@@ -132,7 +180,27 @@ void machine_schedule(State* state, Instr* instr) {
   }
 
   // exec depends on data dependencies
-  stats->execute_start = stats->issue + 1;
+  size_t projected_execute_start = stats->issue + 1;
+  size_t dependency_execute_start;
+  switch (instr->op_type) {
+    case STORE:
+    /* FALLTHROUGH */
+    case LOAD:
+      dependency_execute_start = _machine_find_data_dependency(state, instr, instr->op2) + 1;
+      break;
+    default:
+      dependency_execute_start = _machine_find_data_dependencies(state, instr) + 1;
+      break;
+  }
+
+  if (dependency_execute_start > projected_execute_start) {
+    state->stats.true_dependence_delays += dependency_execute_start - projected_execute_start;
+    instr->stats.execute_start = dependency_execute_start;
+  }
+  else {
+    instr->stats.execute_start = projected_execute_start;
+  } 
+
   stats->execute_end = stats->execute_start - 1 + state->latencies[instr->op_type];
   rs_push(station, stats->execute_end);
 
@@ -157,7 +225,8 @@ void machine_schedule(State* state, Instr* instr) {
     stats->cdb_write = bv_insert(state->commit_bv, (stats->mem_read ? stats->mem_read : stats->execute_end) + 1); 
     break;
   }
-  // depends on commit availability
+
+  // depends purely on commit availability
   size_t next_avail_commit = instr->prev->stats.commit + 1;
   size_t projected_commit = stats->cdb_write + 1;
   stats->commit = (next_avail_commit > projected_commit) ? next_avail_commit : projected_commit;
