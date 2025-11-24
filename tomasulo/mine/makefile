@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-O3 -Wall -Wpedantic -Wextra -Iinclude
+CFLAGS=-O3 -Wall -Wpedantic -Wextra -Iinclude -ggdb 
 SRCS := $(wildcard *.c)
 # OBJS := $(basename $(SRC))
 
@@ -14,6 +14,8 @@ tomasulo: $(SRCS)
 test: tomasulo
 	./tomasulo ../dynamsched/config.txt < ../dynamsched/trace2.dat
 
+valgrind: tomasulo
+	valgrind --leak-check=full ./tomasulo ../dynamsched/config.txt < ../dynamsched/trace2.dat
 # generate compile_commands.json
 compile_commands.json:
 	@echo "[" > compile_commands.json

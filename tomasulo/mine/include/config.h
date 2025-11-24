@@ -13,5 +13,6 @@ typedef struct Config {
   unsigned int fp_div_lat;
 } Config;
 
+void config_free(Config* config);
 Config* config_parse(const char* file_name);
 void config_print(const Config* config);

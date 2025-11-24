@@ -1,25 +1,34 @@
-#include <stdio.h>
+#pragma once
 #include <stddef.h>
+#include <stdbool.h>
 
 #define INSTR_NAME_SIZE 16
 #define INSTR_TOTAL_SIZE 128
 #define OP_STR_SIZE 16
 
-typedef struct InstrStats {
-  size_t issues;
-  size_t executes;
+typedef struct InstrStats InstrStats;
+typedef struct Instr Instr;
+
+struct InstrStats {
+  size_t issue;
+  size_t execute_start;
+  size_t execute_end;
   size_t mem_read;
   size_t cdb_write;
-  size_t commits;
-} InstrStats;
+  size_t commit;
+};
 
-typedef enum op_t {
-  STORE, LOAD, ARITHMETIC, BRANCH
-} op_t;
+enum op_t {
+  STORE = 0, LOAD = 0,
+  ADD = 1, SUB = 1,
+  FMUL = 2, FDIV = 3,
+  FADD = 4, FSUB = 5,
+  BRANCH = 6
+};
 
-typedef struct Instr {
+struct Instr {
     char str[INSTR_TOTAL_SIZE];
-    op_t op_type;
+    enum op_t op_type;
 
     int fp;
     
@@ -28,8 +37,13 @@ typedef struct Instr {
     unsigned int op3;
 
     InstrStats stats;
-} Instr;
 
+    Instr* next;
+    Instr* prev;
+};
+
+Instr* instr_new(void);
+void   instr_free(Instr* instr);
 Instr* instr_parse(const char* instr_str);
 
 //
@@ -39,3 +53,4 @@ Instr* instr_parse(const char* instr_str);
 // prints debug information about 'instr'
 // if stats is non-zero, will also print stat information
 void instr_print(const Instr* instr, int stats);
+Instr* instr_sentinel(void);
