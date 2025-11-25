@@ -45,6 +45,10 @@ static size_t _machine_data_dependency_search(State* state, Instr* instr, size_t
     default:
       fp_type_reg = instr->fp;
   }
+
+  // ignore if x0
+  if (!fp_type_reg && !operand)
+    return 0;
   
   // walk
   while (i < state->config->reorder_buf && cur != instr_sentinel()) {
@@ -87,6 +91,7 @@ static size_t _machine_data_dependency(State* state, Instr* instr) {
 
 static size_t _machine_store_dependency(State* state, Instr* instr) {
   if (instr->op_type != LOAD) return 0;
+  if (!instr->op3 && !instr->fp) return 0;    // ignore x0
 
   size_t i = 0;
   Instr* cur = instr->prev;
@@ -96,7 +101,7 @@ static size_t _machine_store_dependency(State* state, Instr* instr) {
         cur->op3 != instr->op3 ||
         cur->op_type != STORE) goto _machine_store_dependency_iterate;
 
-    fprintf(stderr, "\t STORE dependency on instruction: %s(commit: %lu)\n", cur->str, cur->stats.commit);
+    fprintf(stderr, "\tSTORE dependency on instruction: %s(commit: %lu)\n", cur->str, cur->stats.commit);
     return cur->stats.commit;
 
 _machine_store_dependency_iterate:
@@ -128,7 +133,7 @@ State* machine_init(const Config* config) {
   state->latencies[STORE] = state->latencies[LOAD] = 1;
 
   // add, sub, branch // for some reason this one can't be a single line assignment
-  state->stations[SUB] = rs_new(config->fp_adds_buf);
+  state->stations[SUB] = rs_new(config->ints_buf);
   state->stations[ADD] = state->stations[SUB];
   state->stations[BRANCH] = state->stations[ADD];
   if (!state->stations[ADD]) goto machine_init_fail;
@@ -142,7 +147,7 @@ State* machine_init(const Config* config) {
   state->latencies[FDIV] = config->fp_div_lat;
 
   // fadd and fsub
-  state->stations[FADD] = state->stations[FSUB] = rs_new(config->ints_buf);
+  state->stations[FADD] = state->stations[FSUB] = rs_new(config->fp_adds_buf);
   if (!state->stations[FADD]) goto machine_init_fail;
   state->latencies[FADD] = config->fp_add_lat;
   state->latencies[FSUB] = config->fp_sub_lat;
@@ -195,7 +200,7 @@ void machine_schedule(State* state, Instr* instr) {
   // RESERVATION STATION DELAY: check reservation station delay for ISSUE delays
   size_t reservation_station_delay = 0;
   size_t rs_avail = rs_peek(station);     // get next clock cycle a station will become available
-  fprintf(stderr, "\trs_avail: %lu\n", rs_avail); 
+  fprintf(stderr, "\trs_peek: %lu\n", rs_avail); 
   if (rs_avail >= projected_issue) {
     size_t issue = rs_avail + 1; 
     if (issue > projected_issue)

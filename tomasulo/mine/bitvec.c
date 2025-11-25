@@ -46,9 +46,9 @@ size_t bv_insert(BitVector* bv, size_t pos) {
   size_t start_index = pos / bitsize;
 
   // resize if needed
-  if (start_index >= bv->capacity) {
+  if (start_index + 1 >= bv->capacity) {
 //     fprintf(stderr, "resizing for instruction position: %lu\n", pos);
-    _bv_resize(bv, start_index * 2);
+    _bv_resize(bv, (start_index + 1) * 2);
   }
   
   // walk through the bitset until there is an empty position
@@ -67,7 +67,8 @@ size_t bv_insert(BitVector* bv, size_t pos) {
     return i;
   }
 
-  fprintf(stderr, "WARNING, bv_insert didn't find a place to insert\n");
+  fprintf(stderr, "WARNING, bv_insert didn't find a place to insert.\n");
+  fprintf(stderr, "index: %lu, bv->capacity: %lu, starting pos: %lu, ending pos: %lu\n", start_index, bv->capacity, pos, bv->capacity * bitsize);
 
   return 0;
 }

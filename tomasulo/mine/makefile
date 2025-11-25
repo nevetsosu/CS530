@@ -16,6 +16,7 @@ test: tomasulo
 
 valgrind: tomasulo
 	valgrind --leak-check=full ./tomasulo ../dynamsched/config.txt < ../dynamsched/trace2.dat
+
 # generate compile_commands.json
 compile_commands.json:
 	@echo "[" > compile_commands.json
