@@ -1,3 +1,6 @@
+# hydra/tesla NFS
+.nfs*
+
 # Prerequisites
 *.d
 
