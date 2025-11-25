@@ -47,7 +47,7 @@ int main(int argc, char** argv) {
   // FINAL RESULTS
   printf("                    Pipeline Simulation\n");
   printf("-----------------------------------------------------------\n");
-  printf("                                    Memory Writes\n");
+  printf("                                      Memory Writes\n");
   printf("     Instruction      Issues Executes  Read  Result Commits\n");
   printf("--------------------- ------ -------- ------ ------ -------\n");
   

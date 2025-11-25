@@ -27,7 +27,52 @@ static inline size_t max(size_t a, size_t b) {
   return a > b ? a : b;
 }
 
-static const enum op_t unique_stations[] = { STORE, ADD, FMUL, FADD, BRANCH };
+static const enum op_t unique_stations[] = { STORE, ADD, FMUL, FADD };
+
+// traverses backwards through instructions and tries to find an instruction that writes to
+// the current register and which cycle it does it on
+static size_t _machine_data_dependency_search(State* state, Instr* instr, size_t operand) {
+  size_t i = 0;
+  Instr* cur = instr->prev;
+  
+  // walk
+  while (i < state->config->reorder_buf && cur != instr_sentinel()) {
+    if (cur->fp != instr->fp   ||
+        cur->op_type == STORE  ||
+        cur->op1 != operand) goto _machine_data_dependency_search_iterate;
+    
+    fprintf(stderr, "\tdependency on instruction: %s (cdb: %lu)\n", cur->str, cur->stats.cdb_write);
+    return cur->stats.cdb_write;
+
+_machine_data_dependency_search_iterate:
+    i += 1;
+    cur = cur->prev;
+  }
+
+  return 0;
+}
+
+// checks for data dependencies that would stall the current instruction
+static size_t _machine_data_dependency(State* state, Instr* instr) {
+  // all operations have to atleast have op2 checked
+  size_t dependent_cycle = _machine_data_dependency_search(state, instr, instr->op2);  
+  
+  // determine what other operands need to be checked
+  switch (instr->op_type) {
+    // LOADS and STORES will have their own checks
+    case LOAD:
+      /* FALLTHROUGH */
+    case STORE:
+      break;
+
+    default:
+      // non-load stores also need op3 checked
+      dependent_cycle = max(dependent_cycle, _machine_data_dependency_search(state, instr, instr->op3));
+      break;
+  }
+  
+  return dependent_cycle;
+}
 
 void machine_free(State* state) { 
   for (size_t i = 0; i < sizeof(unique_stations) / sizeof(*unique_stations); i++) {
@@ -49,11 +94,12 @@ State* machine_init(const Config* config) {
   if (!state->stations[STORE]) goto machine_init_fail;
   state->latencies[STORE] = state->latencies[LOAD] = 1;
 
-  // add and sub // for some reason this one can't be a single line assignment
+  // add, sub, branch // for some reason this one can't be a single line assignment
   state->stations[SUB] = rs_new(config->fp_adds_buf);
   state->stations[ADD] = state->stations[SUB];
+  state->stations[BRANCH] = state->stations[ADD];
   if (!state->stations[ADD]) goto machine_init_fail;
-  state->latencies[ADD] = state->latencies[SUB] = 1;
+  state->latencies[ADD] = state->latencies[SUB] = state->latencies[BRANCH] = 1;
   
 
   // fmul and div
@@ -67,11 +113,6 @@ State* machine_init(const Config* config) {
   if (!state->stations[FADD]) goto machine_init_fail;
   state->latencies[FADD] = config->fp_add_lat;
   state->latencies[FSUB] = config->fp_sub_lat;
-
-  // exec portion of branches
-  state->stations[BRANCH] = rs_new(1);
-  if (!state->stations[BRANCH]) goto machine_init_fail;
-  state->latencies[BRANCH] = 1;
 
   // reorder buffer
   state->reorder = rb_new(config->reorder_buf);
@@ -103,36 +144,32 @@ void machine_schedule(State* state, Instr* instr) {
 
   fprintf(stderr, "instruction: %s\n", instr->str);
 
-  // Projected issue is just 1 after the previous issue
+  // PROJECTED ISSUE is just 1 after the previous issue
   size_t projected_issue = instr->prev->stats.issue + 1;
+  fprintf(stderr, "\tprojected issue: %lu\n", projected_issue);
 
-  // check ROB buffer for ISSUE delays
+  // ROB DELAY: check ROB buffer for ISSUE delays
   size_t reorder_buffer_delay = 0;
   if (rb_full(state->reorder)) {
     size_t issue;
     rb_pop(state->reorder, &issue);
-    issue += 1;
     
-    printf("reorder buffer full, popping value: %lu\n", issue);
+    fprintf(stderr, "\treorder buffer full: %lu\n", issue);
     if (issue > projected_issue)
       reorder_buffer_delay = issue - projected_issue;  
   }
   
-  // check reservation station delay for ISSUE delays
+  // RESERVATION STATION DELAY: check reservation station delay for ISSUE delays
   size_t reservation_station_delay = 0;
   size_t rs_avail = rs_peek(station);     // get next clock cycle a station will become available
-  if (instr->op_type == LOAD)
-  {
-    fprintf(stderr, "%lu\n", rs_avail);
-  }
-  if (rs_avail > projected_issue) {
-    size_t issue = rs_avail + 1;
-    
+  fprintf(stderr, "\trs_avail: %lu\n", rs_avail); 
+  if (rs_avail >= projected_issue) {
+    size_t issue = rs_avail + 1; 
     if (issue > projected_issue)
       reservation_station_delay = issue - projected_issue;
   }
   
-  // calculate delay if any
+  // RESERVATION STATION OR REORDER BUFFER DELAY: calculate delay if any
   stats->issue = projected_issue;
   if (reservation_station_delay > reorder_buffer_delay) {
     state->stats.reservation_station_delays += reservation_station_delay;
@@ -143,23 +180,21 @@ void machine_schedule(State* state, Instr* instr) {
     stats->issue += reorder_buffer_delay;
   }
 
-  // exec depends on data dependencies
+  // EXEC_START: depends on data dependencies // TODO
   size_t projected_execute_start = stats->issue + 1;
-  instr->stats.execute_start = projected_execute_start;
+  size_t data_dependent_start = _machine_data_dependency(state, instr) + 1;
   
+  if (data_dependent_start > projected_execute_start) {
+    instr->stats.execute_start = data_dependent_start;
+    state->stats.true_dependence_delays += data_dependent_start - projected_execute_start;
+  }
+  else
+    instr->stats.execute_start = projected_execute_start;
+  
+  // EXEC_END
   stats->execute_end = stats->execute_start - 1 + state->latencies[instr->op_type];
  
-  // when to release the station depends on the operation
-  switch (instr->op_type) {
-    case LOAD:
-      rs_push(station, stats->mem_read);
-      break;
-    default:
-      rs_push(station, stats->execute_end);
-      break;
-  }
-
-  // memory depends on instruction and mem availability
+  // MEM_READ: memory depends on instruction and mem availability
   switch (instr->op_type) {
     case LOAD:
       stats->mem_read = bv_insert(state->mem_bv, stats->execute_end + 1);
@@ -169,7 +204,17 @@ void machine_schedule(State* state, Instr* instr) {
       break;
   }
 
-  // depends instruction type AND CDB availability
+  // FU RELEASE: when to release the station depends on the operation
+  switch (instr->op_type) {
+    case LOAD:
+      rs_push(station, stats->mem_read);
+      break;
+    default:
+      rs_push(station, stats->execute_end);
+      break;
+  }
+
+  // CDB_WRITE depends instruction type AND CDB availability
   switch (instr->op_type) {
     case STORE:
       /* FALLTHROUGH */
@@ -181,13 +226,17 @@ void machine_schedule(State* state, Instr* instr) {
     break;
   }
 
-  // depends purely on commit availability
+  // COMMIT depends purely on commit availability
   size_t next_avail_commit = instr->prev->stats.commit + 1;
   size_t projected_commit = stats->cdb_write + 1;
   stats->commit = (next_avail_commit > projected_commit) ? next_avail_commit : projected_commit;
 
-  rb_push(state->reorder, stats->commit);
+  // also make sure to take availability on the load/store functional unit during a store commit
+  if (instr->op_type == STORE)
+    bv_insert(state->mem_bv, stats->commit);
 
+  // push commit
+  rb_push(state->reorder, stats->commit);
 }
 
 StateStats* machine_stats(State* state) {

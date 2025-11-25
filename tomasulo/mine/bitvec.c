@@ -48,7 +48,7 @@ size_t bv_insert(BitVector* bv, size_t pos) {
 
   // resize if needed
   if (index >= bv->capacity) {
-    fprintf(stderr, "resizing for instruction position: %lu\n", pos);
+//     fprintf(stderr, "resizing for instruction position: %lu\n", pos);
     _bv_resize(bv, index * 2);
   }
   
@@ -56,11 +56,11 @@ size_t bv_insert(BitVector* bv, size_t pos) {
   for (size_t i = index; i < bv->capacity; i++) {
     for (size_t j = bit_pos; j < bitsize; j++) {
       if (_bv_index(bv, i, j)) {
-        fprintf(stderr, "position: %lu taken\n", i * sizeof(size_t) * 8 + j);
+  //       fprintf(stderr, "position: %lu taken\n", i * sizeof(size_t) * 8 + j);
         continue;
       }
 
-      fprintf(stderr, "found position at %lu, index: %lu, bit pos: %lu\n", i * sizeof(size_t) * 8 + j, i, j);
+//      fprintf(stderr, "found position at %lu, index: %lu, bit pos: %lu\n", i * sizeof(size_t) * 8 + j, i, j);
 
       // set position and return position
       bv->store[i] |= (1lu << j);

@@ -93,6 +93,7 @@ void config_print(const Config* config) {
   printf("    fp adds: %-2u\n" , config->fp_adds_buf);
   printf("    fp muls: %-2u\n",  config->fp_muls_buf);
   printf("       ints: %-2u\n",     config->ints_buf);
+  printf("    reorder: %-2u\n",  config->reorder_buf);
 
   printf("\nlatencies:\n");
 
