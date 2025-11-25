@@ -5,17 +5,18 @@ SRCS := $(wildcard *.c)
 
 all: build
 
-# For 530 grading
-build: tomasulo
+# Aliases for 530 grading
+build: dynamsched
+run: test
 
-tomasulo: $(SRCS)
+dynamsched: $(SRCS)
 	$(CC) $(CFLAGS) -o $@ $^
 
-test: tomasulo
-	./tomasulo ../dynamsched/config.txt < ../dynamsched/trace2.dat
+test: dynamsched
+	./dynamsched < ./traces/trace2.dat
 
-valgrind: tomasulo
-	valgrind --leak-check=full ./tomasulo ../dynamsched/config.txt < ../dynamsched/trace2.dat
+valgrind: dynamsched
+	valgrind --leak-check=full ./dynamsched ../dynamsched/config.txt < ../dynamsched/trace2.dat
 
 # generate compile_commands.json
 compile_commands.json:
@@ -27,4 +28,4 @@ compile_commands.json:
 	done
 	@echo "]" >> compile_commands.json
 clean:
-	rm -f ./tomasulo ./compile_commands.json
+	rm -f ./dynamsched ./compile_commands.json
