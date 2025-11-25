@@ -70,9 +70,6 @@ Instr* instr_parse(const char* instr_str) {
         fprintf(stderr, "unexpected instruction parsing load/store\n");
         goto parse_instr_fail;
     }
-
-    // DEBUG
-    // fprintf(stderr, "load store: %s\n", instr_name); 
   }
   // arithmetic
   else if (sscanf(instr_str, "%s %*c%u,%*c%u,%*c%u", instr_name, &instr->op1, &instr->op2, &instr->op3) == 4) {
@@ -99,15 +96,11 @@ Instr* instr_parse(const char* instr_str) {
       fprintf(stderr, "couldn't parse arithmetic instruction\n");
       goto parse_instr_fail;
     }
-
-    // DEBUG
-    // DEBUG fprintf(stderr, "arithmetic\n");
   }
   // branch
   else if (sscanf(instr_str, "%s x%u,x%u,%*s", instr_name, &instr->op2, &instr->op3) == 3) {
     instr->op_type = BRANCH;
     instr->op1 = (unsigned int)-1;  // -1 will be used as the NO_OP indicator
-    fprintf(stderr, "branch\n");
   }
   // unrecognized
   else {
@@ -124,9 +117,6 @@ Instr* instr_parse(const char* instr_str) {
   if (!instr->fp && !instr->op3)
     instr->op3 = (unsigned int) -1;
 
-  // DEBUG
-  // instr_print(instr, 0);
-  
   goto parse_instr_clean;
 
 parse_instr_fail:

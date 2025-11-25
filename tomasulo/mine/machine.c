@@ -56,7 +56,6 @@ static size_t _machine_data_dependency_search(State* state, Instr* instr, size_t
         cur->op_type == STORE  ||
         cur->op1 != operand) goto _machine_data_dependency_search_iterate;
     
-    fprintf(stderr, "\tdependency on instruction: %s (cdb: %lu)\n", cur->str, cur->stats.cdb_write);
     return cur->stats.cdb_write;
 
 _machine_data_dependency_search_iterate:
@@ -101,7 +100,6 @@ static size_t _machine_store_dependency(State* state, Instr* instr) {
         cur->op3 != instr->op3 ||
         cur->op_type != STORE) goto _machine_store_dependency_iterate;
 
-    fprintf(stderr, "\tSTORE dependency on instruction: %s(commit: %lu)\n", cur->str, cur->stats.commit);
     return cur->stats.commit;
 
 _machine_store_dependency_iterate:
@@ -180,11 +178,8 @@ void machine_schedule(State* state, Instr* instr) {
   InstrStats* stats = &instr->stats;
   RStation* station = state->stations[instr->op_type];
 
-  fprintf(stderr, "instruction: %s\n", instr->str);
-
   // PROJECTED ISSUE is just 1 after the previous issue
   size_t projected_issue = instr->prev->stats.issue + 1;
-  fprintf(stderr, "\tprojected issue: %lu\n", projected_issue);
 
   // ROB DELAY: check ROB buffer for ISSUE delays
   size_t reorder_buffer_delay = 0;
@@ -192,7 +187,6 @@ void machine_schedule(State* state, Instr* instr) {
     size_t issue;
     rb_pop(state->reorder, &issue);
     
-    fprintf(stderr, "\treorder buffer full: %lu\n", issue);
     if (issue > projected_issue)
       reorder_buffer_delay = issue - projected_issue;  
   }
@@ -200,17 +194,17 @@ void machine_schedule(State* state, Instr* instr) {
   // RESERVATION STATION DELAY: check reservation station delay for ISSUE delays
   size_t reservation_station_delay = 0;
   size_t rs_avail = rs_peek(station);     // get next clock cycle a station will become available
-  fprintf(stderr, "\trs_peek: %lu\n", rs_avail); 
   if (rs_avail >= projected_issue) {
     size_t issue = rs_avail + 1; 
     if (issue > projected_issue)
       reservation_station_delay = issue - projected_issue;
   }
   
-  // RESERVATION STATION OR REORDER BUFFER DELAY: calculate delay if any
+  // RESERVATION STATION OR REORDER BUFFER DELAY: calculate delay
   stats->issue = projected_issue;
   if (reservation_station_delay > reorder_buffer_delay) {
-    state->stats.reservation_station_delays += reservation_station_delay;
+    state->stats.reservation_station_delays += reservation_station_delay - reorder_buffer_delay;
+    state->stats.reorder_buffer_delays += reorder_buffer_delay;
     stats->issue += reservation_station_delay;
   }
   else {
@@ -248,7 +242,6 @@ void machine_schedule(State* state, Instr* instr) {
         stats->mem_read = bv_insert(state->mem_bv, projected_mem_read);
         state->stats.data_memory_conflict_delays += stats->mem_read - projected_mem_read;
       }
-
       break;
     default:
       stats->mem_read = 0;
@@ -280,11 +273,15 @@ void machine_schedule(State* state, Instr* instr) {
   // COMMIT depends purely on commit availability
   size_t next_avail_commit = instr->prev->stats.commit + 1;
   size_t projected_commit = stats->cdb_write + 1;
-  stats->commit = (next_avail_commit > projected_commit) ? next_avail_commit : projected_commit;
+  size_t start_commit = (next_avail_commit > projected_commit) ? next_avail_commit : projected_commit;
 
   // also make sure to take availability on the load/store functional unit during a store commit
-  if (instr->op_type == STORE)
-    bv_insert(state->mem_bv, stats->commit);
+  if (instr->op_type == STORE) {
+     stats->commit = bv_insert(state->mem_bv, start_commit);
+    state->stats.data_memory_conflict_delays += stats->commit - start_commit;
+  }
+  else
+    stats->commit = start_commit;
 
   // push commit
   rb_push(state->reorder, stats->commit);
