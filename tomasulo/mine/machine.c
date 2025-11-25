@@ -239,11 +239,14 @@ void machine_schedule(State* state, Instr* instr) {
   switch (instr->op_type) {
     case LOAD:
       if (store_dependent_start > projected_mem_read) {
-        // ADD DELAY TO STATS?? BUT WHERE??
+        state->stats.true_dependence_delays += store_dependent_start - projected_mem_read;
         stats->mem_read = bv_insert(state->mem_bv, store_dependent_start);
+
+        state->stats.data_memory_conflict_delays += stats->mem_read - store_dependent_start;
       }
       else {
         stats->mem_read = bv_insert(state->mem_bv, projected_mem_read);
+        state->stats.data_memory_conflict_delays += stats->mem_read - projected_mem_read;
       }
 
       break;
