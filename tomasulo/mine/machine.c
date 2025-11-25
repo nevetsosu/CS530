@@ -23,51 +23,11 @@ struct State {
   const Config* config;
 };
 
-static const enum op_t unique_stations[] = { STORE, ADD, FMUL, FADD, BRANCH };
-
-// returns the dependent cycle
-// stores and loads use this for the effective address register dependence
-static size_t _machine_find_data_dependency(State* state, Instr* instr, size_t operand) {
-  Instr* cur = instr->prev;
-  size_t i = 0;
-
-  while (i < state->config->reorder_buf && cur != instr_sentinel()) {
-    if (cur->op1 != operand || cur->fp != instr->fp) goto _machine_find_data_dependency_next;
-    
-    fprintf(stderr, "found depedendent instruction: %s\n", cur->str);
-    size_t dependent_cycle;
-    switch (cur->op_type) {
-      case STORE:
-        dependent_cycle = cur->stats.commit;
-        break;
-      default:
-        dependent_cycle = cur->stats.cdb_write;
-        break;
-    }
-
-    return dependent_cycle;
-
-_machine_find_data_dependency_next:
-    i += 1;
-    cur = cur->prev;
-  }
-
-  return 0;
+static inline size_t max(size_t a, size_t b) {
+  return a > b ? a : b;
 }
 
-// non-stores and non-loads use this
-static size_t _machine_find_data_dependencies(State* state, Instr* instr) {
-  size_t dependencies[2] = { 0 };
-  if (instr->op2 != (unsigned int) -1)
-    dependencies[0] = _machine_find_data_dependency(state, instr, instr->op2);
-  if (instr->op3 != (unsigned int) -1)
-    dependencies[1] = _machine_find_data_dependency(state, instr, instr->op3);
-
-  if (dependencies[0] > dependencies[1])
-    return dependencies[0];
-  else
-    return dependencies[1];
-} 
+static const enum op_t unique_stations[] = { STORE, ADD, FMUL, FADD, BRANCH };
 
 void machine_free(State* state) { 
   for (size_t i = 0; i < sizeof(unique_stations) / sizeof(*unique_stations); i++) {
@@ -161,6 +121,10 @@ void machine_schedule(State* state, Instr* instr) {
   // check reservation station delay for ISSUE delays
   size_t reservation_station_delay = 0;
   size_t rs_avail = rs_peek(station);     // get next clock cycle a station will become available
+  if (instr->op_type == LOAD)
+  {
+    fprintf(stderr, "%lu\n", rs_avail);
+  }
   if (rs_avail > projected_issue) {
     size_t issue = rs_avail + 1;
     
@@ -181,28 +145,19 @@ void machine_schedule(State* state, Instr* instr) {
 
   // exec depends on data dependencies
   size_t projected_execute_start = stats->issue + 1;
-  size_t dependency_execute_start;
+  instr->stats.execute_start = projected_execute_start;
+  
+  stats->execute_end = stats->execute_start - 1 + state->latencies[instr->op_type];
+ 
+  // when to release the station depends on the operation
   switch (instr->op_type) {
-    case STORE:
-    /* FALLTHROUGH */
     case LOAD:
-      dependency_execute_start = _machine_find_data_dependency(state, instr, instr->op2) + 1;
+      rs_push(station, stats->mem_read);
       break;
     default:
-      dependency_execute_start = _machine_find_data_dependencies(state, instr) + 1;
+      rs_push(station, stats->execute_end);
       break;
   }
-
-  if (dependency_execute_start > projected_execute_start) {
-    state->stats.true_dependence_delays += dependency_execute_start - projected_execute_start;
-    instr->stats.execute_start = dependency_execute_start;
-  }
-  else {
-    instr->stats.execute_start = projected_execute_start;
-  } 
-
-  stats->execute_end = stats->execute_start - 1 + state->latencies[instr->op_type];
-  rs_push(station, stats->execute_end);
 
   // memory depends on instruction and mem availability
   switch (instr->op_type) {
@@ -231,8 +186,8 @@ void machine_schedule(State* state, Instr* instr) {
   size_t projected_commit = stats->cdb_write + 1;
   stats->commit = (next_avail_commit > projected_commit) ? next_avail_commit : projected_commit;
 
-  // commit
   rb_push(state->reorder, stats->commit);
+
 }
 
 StateStats* machine_stats(State* state) {

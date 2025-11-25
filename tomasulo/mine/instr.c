@@ -76,7 +76,6 @@ Instr* instr_parse(const char* instr_str) {
   }
   // arithmetic
   else if (sscanf(instr_str, "%s %*c%u,%*c%u,%*c%u", instr_name, &instr->op1, &instr->op2, &instr->op3) == 4) {
-
     // determine the exact instruction
     if (!strncmp(instr_name, "fadd", 4)) {
       instr->op_type = FADD;  
@@ -118,6 +117,12 @@ Instr* instr_parse(const char* instr_str) {
 
   // determine whether the instruction is floating point
   instr->fp = (instr_name[0] == 'f');
+  
+  // remove dependency worries when the register is x0
+  if (!instr->fp && !instr->op2)
+    instr->op2 = (unsigned int) -1;
+  if (!instr->fp && !instr->op3)
+    instr->op3 = (unsigned int) -1;
 
   // DEBUG
   // instr_print(instr, 0);
