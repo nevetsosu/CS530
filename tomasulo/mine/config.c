@@ -89,17 +89,17 @@ void config_print(const Config* config) {
   printf("-------------\n");
   printf("buffers:\n");
   
-  printf("   eff addr: %-2u\n", config->eff_addr_buf);
-  printf("    fp adds: %-2u\n" , config->fp_adds_buf);
-  printf("    fp muls: %-2u\n",  config->fp_muls_buf);
-  printf("       ints: %-2u\n",     config->ints_buf);
-  printf("    reorder: %-2u\n",  config->reorder_buf);
+  printf("   eff addr: %u\n", config->eff_addr_buf);
+  printf("    fp adds: %u\n" , config->fp_adds_buf);
+  printf("    fp muls: %u\n",  config->fp_muls_buf);
+  printf("       ints: %u\n",     config->ints_buf);
+  printf("    reorder: %u\n",  config->reorder_buf);
 
   printf("\nlatencies:\n");
 
-  printf("   fp add: %-2u\n",   config->fp_add_lat);
-  printf("   fp sub: %-2u\n",   config->fp_sub_lat);
-  printf("   fp mul: %-2u\n",   config->fp_mul_lat);
-  printf("   fp div: %-2u\n",   config->fp_div_lat);
+  printf("   fp add: %u\n",   config->fp_add_lat);
+  printf("   fp sub: %u\n",   config->fp_sub_lat);
+  printf("   fp mul: %u\n",   config->fp_mul_lat);
+  printf("   fp div: %u\n",   config->fp_div_lat);
   printf("\n\n");
 }

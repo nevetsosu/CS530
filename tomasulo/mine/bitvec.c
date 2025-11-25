@@ -22,7 +22,7 @@ static void _bv_resize(BitVector* bv, size_t new_capacity) {
 }
 
 static bool _bv_index(BitVector* bv, size_t index, size_t bit_pos) {
-  return (bv->store[index] >> bit_pos) & 1;
+  return (bv->store[index] >> bit_pos) & 1lu;
 }
 
 void bv_free(BitVector* bv) {
@@ -43,30 +43,28 @@ BitVector* bv_new(size_t initial_capacity) {
 }
 
 size_t bv_insert(BitVector* bv, size_t pos) {
-  size_t index = pos / bitsize;
-  size_t bit_pos = pos % bitsize;
+  size_t start_index = pos / bitsize;
 
   // resize if needed
-  if (index >= bv->capacity) {
+  if (start_index >= bv->capacity) {
 //     fprintf(stderr, "resizing for instruction position: %lu\n", pos);
-    _bv_resize(bv, index * 2);
+    _bv_resize(bv, start_index * 2);
   }
   
   // walk through the bitset until there is an empty position
-  for (size_t i = index; i < bv->capacity; i++) {
-    for (size_t j = bit_pos; j < bitsize; j++) {
-      if (_bv_index(bv, i, j)) {
-  //       fprintf(stderr, "position: %lu taken\n", i * sizeof(size_t) * 8 + j);
-        continue;
-      }
+  for (size_t i = pos; i < bv->capacity * bitsize; i++) {
+    size_t index = i / bitsize;
+    size_t bit_pos = i % bitsize;
+    if (_bv_index(bv, index, bit_pos)) {
+//       fprintf(stderr, "position: %lu taken\n", i * sizeof(size_t) * 8 + j);
+      continue;
+    }
 
 //      fprintf(stderr, "found position at %lu, index: %lu, bit pos: %lu\n", i * sizeof(size_t) * 8 + j, i, j);
 
-      // set position and return position
-      bv->store[i] |= (1lu << j);
-      pos = i * bitsize + j;
-      return pos;
-    }
+    // set position and return position
+    bv->store[index] |= (1lu << bit_pos);
+    return i;
   }
 
   fprintf(stderr, "WARNING, bv_insert didn't find a place to insert\n");

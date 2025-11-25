@@ -35,9 +35,20 @@ static size_t _machine_data_dependency_search(State* state, Instr* instr, size_t
   size_t i = 0;
   Instr* cur = instr->prev;
   
+  bool fp_type_reg;
+  switch (instr->op_type) {
+    case LOAD:
+      /* FALLTHROUGH */
+    case STORE:
+      fp_type_reg = false;
+      break;
+    default:
+      fp_type_reg = instr->fp;
+  }
+  
   // walk
   while (i < state->config->reorder_buf && cur != instr_sentinel()) {
-    if (cur->fp != instr->fp   ||
+    if (cur->fp != fp_type_reg ||
         cur->op_type == STORE  ||
         cur->op1 != operand) goto _machine_data_dependency_search_iterate;
     
@@ -73,6 +84,28 @@ static size_t _machine_data_dependency(State* state, Instr* instr) {
   
   return dependent_cycle;
 }
+
+static size_t _machine_store_dependency(State* state, Instr* instr) {
+  if (instr->op_type != LOAD) return 0;
+
+  size_t i = 0;
+  Instr* cur = instr->prev;
+
+  while (i < state->config->reorder_buf && cur != instr_sentinel()) {
+    if (cur->fp != instr->fp ||
+        cur->op3 != instr->op3 ||
+        cur->op_type != STORE) goto _machine_store_dependency_iterate;
+
+    fprintf(stderr, "\t STORE dependency on instruction: %s(commit: %lu)\n", cur->str, cur->stats.commit);
+    return cur->stats.commit;
+
+_machine_store_dependency_iterate:
+    i += 1;
+    cur = cur->prev;
+  }
+
+  return 0;
+} 
 
 void machine_free(State* state) { 
   for (size_t i = 0; i < sizeof(unique_stations) / sizeof(*unique_stations); i++) {
@@ -180,7 +213,7 @@ void machine_schedule(State* state, Instr* instr) {
     stats->issue += reorder_buffer_delay;
   }
 
-  // EXEC_START: depends on data dependencies // TODO
+  // EXEC_START: depends on data dependencies
   size_t projected_execute_start = stats->issue + 1;
   size_t data_dependent_start = _machine_data_dependency(state, instr) + 1;
   
@@ -195,9 +228,19 @@ void machine_schedule(State* state, Instr* instr) {
   stats->execute_end = stats->execute_start - 1 + state->latencies[instr->op_type];
  
   // MEM_READ: memory depends on instruction and mem availability
+  size_t projected_mem_read = stats->execute_end + 1;
+  size_t store_dependent_start = _machine_store_dependency(state, instr);     // returns 0 if non-load instruction
+  
   switch (instr->op_type) {
     case LOAD:
-      stats->mem_read = bv_insert(state->mem_bv, stats->execute_end + 1);
+      if (store_dependent_start > projected_mem_read) {
+        // ADD DELAY TO STATS?? BUT WHERE??
+        stats->mem_read = bv_insert(state->mem_bv, store_dependent_start);
+      }
+      else {
+        stats->mem_read = bv_insert(state->mem_bv, projected_mem_read);
+      }
+
       break;
     default:
       stats->mem_read = 0;
