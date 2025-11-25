@@ -3,6 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define MAX_REORDER_BUF 10
+#define MAX_RESERV_STAT 10
+
 void config_free(Config* config) {
   free(config);
 }
@@ -31,22 +34,27 @@ Config* config_parse(const char* file_name) {
   // eff addr buffer
   getline(&line, &size, f);
   sscanf(line, "eff addr:%u", &config->eff_addr_buf);
+  config->eff_addr_buf = (config->eff_addr_buf > MAX_RESERV_STAT) ? MAX_RESERV_STAT : config->eff_addr_buf;
   
   // fp adds buffer
   getline(&line, &size, f);
   sscanf(line, "   fp adds:%u", &config->fp_adds_buf);
+  config->fp_adds_buf = (config->fp_adds_buf > MAX_RESERV_STAT) ? MAX_RESERV_STAT : config->fp_adds_buf;
   
   // fp muls buffer
   getline(&line, &size, f);
   sscanf(line, "   fp muls:%u", &config->fp_muls_buf);
+  config->fp_muls_buf = (config->fp_muls_buf > MAX_RESERV_STAT) ? MAX_RESERV_STAT : config->fp_muls_buf;
   
   // ints buffer 
   getline(&line, &size, f);
-  sscanf(line, "ints:%u", &config->ints_buf);
-
+  sscanf(line, "ints:%u", &config->ints_buf); 
+  config->ints_buf = (config->ints_buf > MAX_RESERV_STAT) ? MAX_RESERV_STAT : config->ints_buf;
+  
   // reorder buffer 
   getline(&line, &size, f);
   sscanf(line, "reorder:%u", &config->reorder_buf);
+  config->reorder_buf = (config->reorder_buf > MAX_REORDER_BUF) ? MAX_REORDER_BUF : config->reorder_buf;
 
   // Eat unecessarily lines
   getline(&line, &size, f); 
